@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><title>Research AI</title></head>
+<body>
+<h1>Research AI Platform</h1>
+<script>
+async function send(){
+ let msg = document.getElementById("msg").value;
+ let res = await fetch("http://localhost:8000/chat/",{
+  method:"POST",
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({message:msg})
+ });
+ let data = await res.json();
+ document.getElementById("out").innerText = data.response;
+}
+</script>
+<input id="msg"/>
+<button onclick="send()">Send</button>
+<p id="out"></p>
+</body>
+</html>
