@@ -1,7 +1,9 @@
 from fastapi import APIRouter
+from app.services.rag import query_rag
 
 router = APIRouter()
 
 @router.post("/")
 def chat(query: dict):
-    return {"response": f"Echo: {query['message']}"}
+    response = query_rag(query["message"])
+    return {"response": response}
