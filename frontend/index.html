@@ -1,22 +1,89 @@
 <!DOCTYPE html>
 <html>
-<head><title>AI Research Platform </title></head>
+<head>
+  <title>AI Research Platform</title>
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      margin-top: 50px;
+      background-color: #f5f5f5;
+    }
+    input, button {
+      padding: 10px;
+      margin: 5px;
+    }
+    #chat-box {
+      margin-top: 20px;
+      padding: 10px;
+      background: white;
+      width: 50%;
+      margin-left: auto;
+      margin-right: auto;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
 <body>
-<h1>Research AI Platform</h1>
-<script>
-async function send(){
- let msg = document.getElementById("msg").value;
- let res = await fetch("http://localhost:8000/chat/",{
-  method:"POST",
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({message:msg})
- });
- let data = await res.json();
- document.getElementById("out").innerText = data.response;
-}
-</script>
-<input id="msg"/>
+
+<h1>🚀 Research AI Platform</h1>
+
+<!-- 📄 PDF Upload -->
+<h3>Upload Research Paper</h3>
+<input type="file" id="file"/>
+<button onclick="upload()">Upload PDF</button>
+
+<hr/>
+
+<!-- 💬 Chat -->
+<h3>Ask Questions</h3>
+<input id="msg" placeholder="Ask something..."/>
 <button onclick="send()">Send</button>
-<p id="out"></p>
+
+<div id="chat-box">
+  <p id="out"></p>
+</div>
+
+<script>
+
+// 📄 Upload PDF
+async function upload(){
+  let fileInput = document.getElementById("file");
+
+  if(fileInput.files.length === 0){
+    alert("Please select a file");
+    return;
+  }
+
+  let formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  let res = await fetch("http://localhost:8000/upload/", {
+    method: "POST",
+    body: formData
+  });
+
+  let data = await res.json();
+  alert(data.message);
+}
+
+
+// 💬 Chat
+async function send(){
+  let msg = document.getElementById("msg").value;
+
+  let res = await fetch("http://localhost:8000/chat/", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({message:msg})
+  });
+
+  let data = await res.json();
+  document.getElementById("out").innerText = data.response;
+}
+
+</script>
+
 </body>
 </html>
