@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File
+import shutil
 import os
 from app.services.rag import process_pdf
 
@@ -9,11 +10,11 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 @router.post("/")
 async def upload_pdf(file: UploadFile = File(...)):
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    file_path = f"{UPLOAD_DIR}/{file.filename}"
 
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
 
-    result = process_pdf(file_path)
+    process_pdf(file_path)
 
-    return {"message": result}
+    return {"message": "PDF processed successfully"}
