@@ -6,16 +6,15 @@ const handleUpload = async (file) => {
   formData.append("file", file);
 
   try {
-    await axios.post("http://localhost:8000/upload/", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    await axios.post(
+      "http://localhost:8000/upload/",
+      formData
+    );
 
     alert("PDF uploaded successfully!");
   } catch (err) {
-    alert("Upload failed");
-    console.error(err);
+    console.log("ERROR:", err.response?.data);
+    alert(err.response?.data?.detail || "Upload failed");
   }
 };
 export default function ChatBox() {
