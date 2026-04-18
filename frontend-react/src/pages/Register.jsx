@@ -7,10 +7,13 @@ export default function Register() {
 
   const handleRegister = async () => {
     try {
-      await axios.post("http://localhost:8000/auth/register", {
-        email,
-        password,
+      await axios.post("http://localhost:8000/auth/signup", {
+        username: email,
+        password: password,
       });
+      // console.log(res.data);
+      // ✅ store token
+    // localStorage.setItem("token", res.data.access_token);
 
       alert("Registration successful!");
       window.location.href = "/";
@@ -50,7 +53,7 @@ export default function Register() {
           onClick={handleRegister}
           className="w-full bg-blue-500 text-white p-3 rounded-lg hover:bg-blue-600 transition"
         >
-          Register
+          Signup
         </button>
 
         {/* Switch */}

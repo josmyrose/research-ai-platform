@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, chat,upload
 from dotenv import load_dotenv
+from app.db.database import Base, engine
+
 load_dotenv()
 
 
@@ -14,10 +16,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.include_router(auth.router, prefix="/auth")
-app.include_router(chat.router, prefix="/chat")
-app.include_router(upload.router, prefix="/upload")
+# ✅ create tables safely
+Base.metadata.create_all(bind=engine)
+app.include_router(auth.router)
+app.include_router(chat.router)
+#app.include_router(upload.router)
+app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 
 @app.get("/")
 def root():

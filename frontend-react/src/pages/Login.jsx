@@ -8,8 +8,8 @@ export default function Login() {
   const handleLogin = async () => {
     try {
       const res = await axios.post("http://localhost:8000/auth/login", {
-        email,
-        password,
+        username: email,   
+      password: password,
       });
 
       localStorage.setItem("token", res.data.access_token);
@@ -53,9 +53,9 @@ export default function Login() {
           Don’t have an account?{" "}
           <span
             className="text-blue-500 cursor-pointer"
-            onClick={() => (window.location.href = "/register")}
+            onClick={() => (window.location.href = "/signup")}
           >
-            Register
+            Signup
           </span>
         </p>
 
