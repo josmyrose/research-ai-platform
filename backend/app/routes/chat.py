@@ -41,3 +41,10 @@ def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_us
     db.commit()
 
     return {"response": response}
+@router.get("/history")
+def get_history(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    if not user:
+        return []
+
+    chats = db.query(Chat).filter(Chat.user_id == user.id).all()
+    return chats

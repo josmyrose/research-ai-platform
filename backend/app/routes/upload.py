@@ -1,20 +1,33 @@
-from fastapi import APIRouter, UploadFile, File
 import shutil
-import os
+from pathlib import Path
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+
 from app.services.rag import process_pdf
 
 router = APIRouter()
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @router.post("/")
 async def upload_pdf(file: UploadFile = File(...)):
-    file_path = f"{UPLOAD_DIR}/{file.filename}"
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="A filename is required.")
 
-    with open(file_path, "wb") as buffer:
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    safe_name = Path(file.filename).name
+    file_path = UPLOAD_DIR / safe_name
+
+    with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    process_pdf(file_path)
+    result = process_pdf(file_path)
 
-    return {"message": "PDF processed successfully"}
+    return {
+        "message": "PDF processed successfully.",
+        **result,
+    }
