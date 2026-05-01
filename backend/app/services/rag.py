@@ -91,10 +91,15 @@ def summarize_text(text, max_sentences=4):
     return " ".join(ordered_summary)
 
 
-def process_pdf(file_path):
+def process_pdf(file_path, user_id=None):
     file_path = Path(file_path)
     documents = _load_documents(file_path)
     summary = summarize_text(_extract_text(documents))
+
+    for document in documents:
+        document.metadata["user_id"] = user_id
+        document.metadata["filename"] = file_path.name
+
     split_docs = _split_documents(documents)
     embeddings = _get_embeddings()
 
@@ -118,20 +123,52 @@ def process_pdf(file_path):
     }
 
 
-def query_rag(query):
+def _has_indexed_docs_for_user(db, user_id):
+    if user_id is None:
+        return True
+
+    return any(
+        doc.metadata.get("user_id") == user_id
+        for doc in db.docstore._dict.values()
+    )
+
+
+def _search_limit_for_user(db, user_id):
+    if user_id is None:
+        return 5
+
+    return max(5, len(db.docstore._dict))
+
+
+def query_rag(query, user_id=None):
     if not DB_PATH.exists():
         return "No documents have been indexed yet. Upload a PDF to start querying your research library."
 
     embeddings = _get_embeddings()
+
     db = FAISS.load_local(
         str(DB_PATH),
         embeddings,
         allow_dangerous_deserialization=True,
     )
 
-    docs = db.similarity_search(query, k=3)
+    if not _has_indexed_docs_for_user(db, user_id):
+        return "No documents have been indexed yet. Upload a PDF to start querying your research library."
+
+    docs = db.similarity_search(query, k=_search_limit_for_user(db, user_id))
+
+    # 🔥 FILTER BY USER
+    if user_id is not None:
+        docs = [
+            doc for doc in docs
+            if doc.metadata.get("user_id") == user_id
+        ]
+
     if not docs:
         return "No relevant information found."
 
-    context = "\n\n".join(doc.page_content for doc in docs if doc.page_content).strip()
+    context = "\n\n".join(
+        doc.page_content for doc in docs if doc.page_content
+    ).strip()
+
     return context or "No relevant information found."
