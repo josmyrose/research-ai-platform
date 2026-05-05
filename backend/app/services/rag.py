@@ -172,3 +172,61 @@ def query_rag(query, user_id=None):
     ).strip()
 
     return context or "No relevant information found."
+
+
+def search_documents(query, user_id=None, limit=8):
+    if not DB_PATH.exists():
+        return []
+
+    cleaned_query = query.strip()
+    if not cleaned_query:
+        return []
+
+    embeddings = _get_embeddings()
+
+    db = FAISS.load_local(
+        str(DB_PATH),
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+
+    if not _has_indexed_docs_for_user(db, user_id):
+        return []
+
+    candidate_limit = _search_limit_for_user(db, user_id)
+    docs_with_scores = db.similarity_search_with_score(
+        cleaned_query,
+        k=max(limit, candidate_limit),
+    )
+
+    results = []
+    seen = set()
+
+    for doc, score in docs_with_scores:
+        if user_id is not None and doc.metadata.get("user_id") != user_id:
+            continue
+
+        filename = doc.metadata.get("filename") or "Indexed document"
+        page = doc.metadata.get("page")
+        content = re.sub(r"\s+", " ", doc.page_content or "").strip()
+        if not content:
+            continue
+
+        result_key = (filename, page, content[:120])
+        if result_key in seen:
+            continue
+
+        seen.add(result_key)
+        results.append(
+            {
+                "filename": filename,
+                "page": page,
+                "snippet": content[:700],
+                "score": float(score),
+            }
+        )
+
+        if len(results) >= limit:
+            break
+
+    return results

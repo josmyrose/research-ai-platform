@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth, chat,upload
+from app.routes import auth, chat, library, scholars, search, upload
 from dotenv import load_dotenv
 from app.db.database import Base, engine
 
@@ -20,6 +20,9 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 app.include_router(auth.router)
 app.include_router(chat.router)
+app.include_router(library.router)
+app.include_router(scholars.router)
+app.include_router(search.router)
 #app.include_router(upload.router)
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 
