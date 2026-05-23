@@ -13,6 +13,7 @@ export default function Login() {
       });
 
       localStorage.setItem("token", res.data.access_token);
+      localStorage.setItem("loggedInUser", res.data.username || email);
       window.location.href = "/dashboard";
     } catch (err) {
       alert("Login failed");

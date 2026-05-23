@@ -32,6 +32,14 @@ const starterModes = [
   { icon: FaBookOpen, label: "Source Mode" },
 ];
 
+const getAuthConfig = () => {
+  const token = localStorage.getItem("token");
+
+  return token
+    ? { headers: { Authorization: `Bearer ${token}` } }
+    : {};
+};
+
 const handleUpload = async (file) => {
   if (!file) {
     return null;
@@ -41,7 +49,7 @@ const handleUpload = async (file) => {
   formData.append("file", file);
 
   try {
-    const response = await axios.post("http://localhost:8000/upload/", formData);
+    const response = await axios.post("http://localhost:8000/upload/", formData, getAuthConfig());
     return response.data;
   } catch (err) {
     throw new Error(err.response?.data?.detail || "Upload failed");
@@ -76,7 +84,7 @@ export default function ChatBox() {
     try {
       const res = await axios.post("http://localhost:8000/chat/", {
         message: nextMessage,
-      });
+      }, getAuthConfig());
 
       setChat((prev) => [
         ...prev,

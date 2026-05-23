@@ -10,6 +10,7 @@ import {
   FaGraduationCap,
   FaMagnifyingGlass,
   FaPlus,
+  FaCircleUser,
 } from "react-icons/fa6";
 
 const primaryItems = [
@@ -50,9 +51,10 @@ function NavButton({ item, activeSection, onSectionChange }) {
   );
 }
 
-export default function Sidebar({ activeSection, onSectionChange }) {
+export default function Sidebar({ activeSection, onSectionChange, currentUser }) {
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("loggedInUser");
     window.location.href = "/";
   };
 
@@ -128,6 +130,22 @@ export default function Sidebar({ activeSection, onSectionChange }) {
       </div>
 
       <div className="mt-6 space-y-4">
+        {currentUser && (
+          <div className="rounded-[24px] border border-white/75 bg-white/75 p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#4968eb]">
+                <FaCircleUser />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Signed in as
+                </p>
+                <p className="truncate text-sm font-semibold text-slate-800">{currentUser}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={() => onSectionChange("chat")}
           className="w-full rounded-[24px] border border-white/70 bg-white/70 p-4 text-left shadow-sm transition hover:bg-white/80"

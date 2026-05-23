@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.rag import query_rag
@@ -20,15 +20,14 @@ def get_db():
 
 @router.post("/")
 def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_user)):
-
+    if not user:
+        raise HTTPException(status_code=401, detail="Login is required before using chat.")
+    
     message = query["message"]
-    response = query_rag(message)
+    response = query_rag(message, user_id=user.id)
 
     # 👇 SAFE MIGRATION LOGIC
-    if user:
-        user_id = user.id
-    else:
-        user_id = None   # guest mode (old behavior)
+    user_id = user.id
 
     # 👇 Save chat
     new_chat = Chat(

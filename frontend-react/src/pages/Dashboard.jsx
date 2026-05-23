@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
 import {
+  FaArrowUp,
   FaBookOpen,
+  FaCopy,
   FaDatabase,
+  FaFileLines,
   FaFlask,
   FaGlobe,
   FaGraduationCap,
@@ -11,6 +15,14 @@ import {
 
 import Sidebar from "../components/Sidebar";
 import ChatBox from "../components/ChatBox";
+
+const getAuthConfig = () => {
+  const token = localStorage.getItem("token");
+
+  return token
+    ? { headers: { Authorization: `Bearer ${token}` } }
+    : {};
+};
 
 const sectionConfig = {
   search: {
@@ -92,6 +104,1133 @@ const sectionConfig = {
   },
 };
 
+const searchPrompts = [
+  "Find methods and experimental setups",
+  "Show findings about evaluation results",
+  "Locate citations or related work",
+];
+
+const navigatorExamples = [
+  "AI for early disease detection",
+  "Green hydrogen catalysts",
+  "Climate change and crop yield",
+];
+
+const datasetHints = {
+  health: ["PubMed abstracts", "MIMIC-IV clinical records", "NIH open datasets"],
+  disease: ["PubMed abstracts", "MIMIC-IV clinical records", "NIH open datasets"],
+  climate: ["NASA Earthdata", "NOAA climate records", "World Bank climate indicators"],
+  crop: ["FAOSTAT", "NASA Earthdata", "regional agricultural yield datasets"],
+  catalyst: ["Materials Project", "Open Catalyst Project", "published electrochemistry tables"],
+  hydrogen: ["Materials Project", "Open Catalyst Project", "NREL data catalog"],
+  default: ["Google Scholar paper corpus", "Semantic Scholar metadata", "domain-specific public datasets"],
+};
+
+const methodHints = {
+  ai: ["baseline model comparison", "ablation study", "error analysis"],
+  machine: ["supervised learning baseline", "feature importance analysis", "cross-validation"],
+  climate: ["time-series analysis", "spatial correlation", "scenario comparison"],
+  catalyst: ["descriptor-based screening", "DFT comparison", "activity-stability evaluation"],
+  hydrogen: ["energy efficiency comparison", "catalyst performance benchmarking", "lifecycle framing"],
+  default: ["systematic literature review", "comparative analysis", "evidence mapping"],
+};
+
+const pickHints = (topic, hints) => {
+  const normalizedTopic = topic.toLowerCase();
+  const matchedKey = Object.keys(hints).find((key) => normalizedTopic.includes(key));
+  return hints[matchedKey] ?? hints.default;
+};
+
+const buildNavigatorPlan = (topic) => {
+  const cleanTopic = topic.trim();
+  const methods = pickHints(cleanTopic, methodHints);
+  const datasets = pickHints(cleanTopic, datasetHints);
+
+  return {
+    questions: [
+      `What is the current research consensus around ${cleanTopic}?`,
+      `Which methods are most commonly used to study ${cleanTopic}?`,
+      `Where do recent papers disagree or report weak evidence for ${cleanTopic}?`,
+    ],
+    methods,
+    datasets,
+    directions: [
+      `Compare 5-8 recent papers and extract their problem, method, findings, and limitations.`,
+      `Build a literature map showing where papers support, extend, or contradict each other.`,
+      `Turn the strongest unresolved limitation into a testable next research question.`,
+    ],
+  };
+};
+
+function ScienceNavigatorPanel({ onOpenChat }) {
+  const [topic, setTopic] = useState("");
+  const [plan, setPlan] = useState(null);
+
+  const generatePlan = (preset) => {
+    const nextTopic = (preset ?? topic).trim();
+    if (!nextTopic) {
+      return;
+    }
+
+    setTopic(nextTopic);
+    setPlan(buildNavigatorPlan(nextTopic));
+  };
+
+  const resultGroups = plan
+    ? [
+        { title: "Research Questions", items: plan.questions },
+        { title: "Methods To Check", items: plan.methods },
+        { title: "Dataset Leads", items: plan.datasets },
+        { title: "Next Directions", items: plan.directions },
+      ]
+    : [];
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(242,246,255,0.92))] p-6 shadow-[0_40px_110px_rgba(120,138,204,0.18)] backdrop-blur-2xl md:p-8">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#4c69ed,#9bb1ff)] text-2xl text-white shadow-[0_18px_38px_rgba(73,104,235,0.26)]">
+            <FaCompass />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#6e85df]">
+            Science Navigator
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800 md:text-5xl">
+            Science Navigator
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            Map a topic into questions, methods, datasets, and next research directions.
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenChat}
+          className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
+        >
+          Open Research Chat
+        </button>
+      </div>
+
+      <div className="rounded-[30px] border border-white/80 bg-white/90 p-4 shadow-[0_24px_50px_rgba(138,153,202,0.16)]">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <input
+            value={topic}
+            onChange={(event) => setTopic(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                generatePlan();
+              }
+            }}
+            className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-[#9aaff8] focus:bg-white"
+            placeholder="Enter a research topic..."
+          />
+          <button
+            onClick={() => generatePlan()}
+            disabled={!topic.trim()}
+            className="flex min-h-12 items-center justify-center rounded-2xl bg-[#4968eb] px-5 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.24)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            Build Map
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {navigatorExamples.map((example) => (
+            <button
+              key={example}
+              onClick={() => generatePlan(example)}
+              className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] hover:text-[#4763e4]"
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+        {plan ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {resultGroups.map((group) => (
+              <div
+                key={group.title}
+                className="rounded-[28px] border border-white/80 bg-white/85 p-5 shadow-[0_18px_36px_rgba(137,154,204,0.12)]"
+              >
+                <h2 className="text-base font-semibold text-slate-800">{group.title}</h2>
+                <ul className="mt-4 space-y-3">
+                  {group.items.map((item) => (
+                    <li key={item} className="rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3">
+            {sectionConfig.navigator.cards.map((card) => (
+              <button
+                key={card}
+                onClick={() => generatePlan(card)}
+                className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-left shadow-[0_18px_36px_rgba(137,154,204,0.12)] transition hover:-translate-y-0.5 hover:border-[#c9d3fb]"
+              >
+                <p className="text-base font-semibold text-slate-800">{card}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  Click to generate a starter research map from this direction.
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SearchPanel({ onOpenChat }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [searchedQuery, setSearchedQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const runSearch = async (preset) => {
+    const nextQuery = (preset ?? query).trim();
+    if (!nextQuery) {
+      return;
+    }
+
+    setQuery(nextQuery);
+    setSearchedQuery(nextQuery);
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await axios.get("http://localhost:8000/search/", {
+        ...getAuthConfig(),
+        params: { q: nextQuery, limit: 8 },
+      });
+
+      setResults(response.data.results ?? []);
+    } catch (err) {
+      setResults([]);
+      setError(err.response?.data?.detail || "Search failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(242,246,255,0.92))] p-6 shadow-[0_40px_110px_rgba(120,138,204,0.18)] backdrop-blur-2xl md:p-8">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#4c69ed,#9bb1ff)] text-2xl text-white shadow-[0_18px_38px_rgba(73,104,235,0.26)]">
+            <FaMagnifyingGlass />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#6e85df]">
+            User Search
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800 md:text-5xl">
+            Research Search
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            Search only through PDFs indexed for your signed-in account.
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenChat}
+          className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
+        >
+          Open Research Chat
+        </button>
+      </div>
+
+      <div className="rounded-[30px] border border-white/80 bg-white/90 p-4 shadow-[0_24px_50px_rgba(138,153,202,0.16)]">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                runSearch();
+              }
+            }}
+            className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-[#9aaff8] focus:bg-white"
+            placeholder="Search your uploaded research PDFs..."
+          />
+          <button
+            onClick={() => runSearch()}
+            disabled={loading || !query.trim()}
+            className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#4968eb] px-5 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.24)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            <FaArrowUp className="text-xs" />
+            Search
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {searchPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              onClick={() => runSearch(prompt)}
+              className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] hover:text-[#4763e4]"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+        {loading ? (
+          <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-sm text-slate-500 shadow-sm">
+            Searching your indexed research documents...
+          </div>
+        ) : error ? (
+          <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-5 text-sm text-rose-700">
+            {error}
+          </div>
+        ) : searchedQuery && results.length === 0 ? (
+          <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-sm leading-6 text-slate-500 shadow-sm">
+            No matches found for <span className="font-semibold text-slate-700">{searchedQuery}</span>.
+            Upload or index a PDF in chat, then try another search.
+          </div>
+        ) : results.length > 0 ? (
+          <div className="grid gap-4">
+            {results.map((result, index) => (
+              <article
+                key={`${result.filename}-${result.page}-${index}`}
+                className="rounded-[28px] border border-white/80 bg-white/85 p-5 shadow-[0_18px_36px_rgba(137,154,204,0.12)]"
+              >
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef2ff] text-[#4968eb]">
+                    <FaFileLines />
+                  </span>
+                  <div>
+                    <h2 className="text-base font-semibold text-slate-800">{result.filename}</h2>
+                    <p>
+                      {result.page !== null && result.page !== undefined
+                        ? `Page ${Number(result.page) + 1}`
+                        : "Indexed text"}{" "}
+                      - relevance score {Number(result.score).toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm leading-7 text-slate-600">{result.snippet}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3">
+            {searchPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => runSearch(prompt)}
+                className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-left shadow-[0_18px_36px_rgba(137,154,204,0.12)] transition hover:-translate-y-0.5 hover:border-[#c9d3fb]"
+              >
+                <p className="text-base font-semibold text-slate-800">{prompt}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  Runs against your uploaded, indexed PDFs only.
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const libraryImportOptions = [
+  {
+    key: "url",
+    title: "Upload URL or DOI",
+    description: "Upload papers from URL or DOI",
+  },
+  {
+    key: "online",
+    title: "Search Papers Online",
+    description: "Search paper metadata before adding it",
+  },
+  {
+    key: "file",
+    title: "Upload File",
+    description: "Import and index PDF",
+  },
+  {
+    key: "bibtex",
+    title: "Import BibTeX or RIS",
+    description: "Add citation files or paste text",
+  },
+  {
+    key: "zotero",
+    title: "Import from Zotero",
+    description: "Prepare migration from Zotero",
+  },
+  {
+    key: "manual",
+    title: "Add Manually",
+    description: "Enter citation data",
+  },
+];
+
+const parseCitationTitle = (value) => {
+  const titleMatch = value.match(/title\s*=\s*[{"]([^}"]+)/i);
+  const risMatch = value.match(/^TI\s+-\s+(.+)$/im);
+  return titleMatch?.[1] || risMatch?.[1] || "Imported citation";
+};
+
+function LibraryPanel({ onOpenChat }) {
+  const [activeImport, setActiveImport] = useState("file");
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [urlOrDoi, setUrlOrDoi] = useState("");
+  const [onlineQuery, setOnlineQuery] = useState("");
+  const [bibtexText, setBibtexText] = useState("");
+  const [selectedBibtexItemId, setSelectedBibtexItemId] = useState("");
+  const [generatingBibtex, setGeneratingBibtex] = useState(false);
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualAuthors, setManualAuthors] = useState("");
+  const [manualYear, setManualYear] = useState("");
+
+  const loadLibraryItems = async () => {
+    try {
+      const response = await axios.get("http://localhost:8000/library/", getAuthConfig());
+      setLibraryItems(response.data ?? []);
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Unable to load your library.");
+    }
+  };
+
+  useEffect(() => {
+    loadLibraryItems();
+  }, []);
+
+  const addItem = async (payload) => {
+    try {
+      const response = await axios.post("http://localhost:8000/library/", payload, getAuthConfig());
+      setLibraryItems((prev) => [response.data, ...prev]);
+      setMessage(`${response.data.title} added to your library.`);
+      return response.data;
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Could not save this library item.");
+      return null;
+    }
+  };
+
+  const uploadPdf = async (file) => {
+    if (!file) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    setUploading(true);
+    setMessage("");
+
+    try {
+      const response = await axios.post("http://localhost:8000/upload/", formData, getAuthConfig());
+      setLibraryItems((prev) => [response.data.library_item, ...prev]);
+      setMessage(`${response.data.filename} uploaded and saved to your library.`);
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const addUrlOrDoi = () => {
+    const value = urlOrDoi.trim();
+    if (!value) {
+      return;
+    }
+
+    addItem({
+      source_type: "URL/DOI",
+      title: value,
+      detail: "Saved as an external paper reference",
+      url: value.startsWith("http") ? value : null,
+      content: value,
+    });
+    setUrlOrDoi("");
+  };
+
+  const addBibtex = () => {
+    const value = bibtexText.trim();
+    if (!value) {
+      return;
+    }
+
+    addItem({
+      source_type: "BibTeX/RIS",
+      title: parseCitationTitle(value),
+      detail: "Citation metadata imported",
+      content: value,
+    });
+    setBibtexText("");
+  };
+
+  const generateBibtex = async (itemId = selectedBibtexItemId) => {
+    if (!itemId) {
+      setMessage("Select a paper first.");
+      return;
+    }
+
+    setGeneratingBibtex(true);
+    setMessage("");
+
+    try {
+      const response = await axios.get(
+        `http://localhost:8000/library/${itemId}/bibtex`,
+        getAuthConfig(),
+      );
+      setSelectedBibtexItemId(String(response.data.item.id));
+      setBibtexText(response.data.bibtex);
+      setActiveImport("bibtex");
+      setMessage(`BibTeX generated for ${response.data.item.title}.`);
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Could not generate BibTeX.");
+    } finally {
+      setGeneratingBibtex(false);
+    }
+  };
+
+  const copyBibtex = async () => {
+    const value = bibtexText.trim();
+    if (!value) {
+      setMessage("Generate or paste BibTeX before copying.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setMessage("BibTeX copied. You can paste it into your paper or reference manager.");
+    } catch {
+      setMessage("Copy failed. Select the BibTeX text and copy it manually.");
+    }
+  };
+
+  const addManual = () => {
+    const title = manualTitle.trim();
+    if (!title) {
+      return;
+    }
+
+    const detail = [manualAuthors.trim(), manualYear.trim()].filter(Boolean).join(" - ");
+    addItem({
+      source_type: "Manual",
+      title,
+      detail: detail || "Manual citation",
+      content: JSON.stringify({
+        authors: manualAuthors.trim(),
+        year: manualYear.trim(),
+      }),
+    });
+    setManualTitle("");
+    setManualAuthors("");
+    setManualYear("");
+  };
+
+  const onlineResults = onlineQuery.trim()
+    ? [
+        `${onlineQuery.trim()}: recent methods and findings`,
+        `${onlineQuery.trim()}: systematic review and open questions`,
+        `${onlineQuery.trim()}: datasets and evaluation benchmarks`,
+      ]
+    : [];
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(242,246,255,0.92))] p-6 shadow-[0_40px_110px_rgba(120,138,204,0.18)] backdrop-blur-2xl md:p-8">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#4c69ed,#9bb1ff)] text-2xl text-white shadow-[0_18px_38px_rgba(73,104,235,0.26)]">
+            <FaBookOpen />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#6e85df]">
+            Library
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800 md:text-5xl">
+            Document Library
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            Add papers by file, DOI, URL, citation text, online lookup, or manual entry.
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenChat}
+          className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
+        >
+          Open Research Chat
+        </button>
+      </div>
+
+      <div className="grid min-h-0 flex-1 gap-5 overflow-hidden lg:grid-cols-[320px_1fr]">
+        <div className="space-y-3 overflow-y-auto pr-1">
+          {libraryImportOptions.map((option) => (
+            <button
+              key={option.key}
+              onClick={() => {
+                setActiveImport(option.key);
+                setMessage("");
+              }}
+              className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+                activeImport === option.key
+                  ? "border-[#9aaff8] bg-[#eef2ff] text-slate-900 shadow-sm"
+                  : "border-white/80 bg-white/80 text-slate-600 hover:border-[#c9d3fb] hover:bg-white"
+              }`}
+            >
+              <p className="text-sm font-semibold">{option.title}</p>
+              <p className="mt-1 text-xs leading-5 opacity-75">{option.description}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 overflow-y-auto rounded-[30px] border border-white/80 bg-white/88 p-5 shadow-[0_24px_50px_rgba(138,153,202,0.16)]">
+          {activeImport === "file" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Upload File</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Upload a PDF to index it for chat and user-specific search.
+              </p>
+              <label className="mt-5 flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[28px] border border-dashed border-[#b7c5fb] bg-slate-50 px-6 py-8 text-center transition hover:bg-[#eef2ff]">
+                <FaArrowUp className="text-2xl text-[#4968eb]" />
+                <span className="mt-3 text-sm font-semibold text-slate-700">
+                  {uploading ? "Processing PDF..." : "Choose PDF to upload"}
+                </span>
+                <span className="mt-1 text-xs text-slate-400">PDF files only</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf"
+                  disabled={uploading}
+                  onChange={(event) => uploadPdf(event.target.files?.[0])}
+                />
+              </label>
+            </div>
+          )}
+
+          {activeImport === "url" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Upload URL or DOI</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Save an external paper link or DOI as a library reference.
+              </p>
+              <div className="mt-5 flex flex-col gap-3 md:flex-row">
+                <input
+                  value={urlOrDoi}
+                  onChange={(event) => setUrlOrDoi(event.target.value)}
+                  className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="https://... or 10.1145/..."
+                />
+                <button
+                  onClick={addUrlOrDoi}
+                  disabled={!urlOrDoi.trim()}
+                  className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+                >
+                  Add Reference
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeImport === "online" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Search Papers Online</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Type a topic to create paper candidates you can add to the library.
+              </p>
+              <input
+                value={onlineQuery}
+                onChange={(event) => setOnlineQuery(event.target.value)}
+                className="mt-5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                placeholder="Search by title, keyword, or author..."
+              />
+              <div className="mt-4 space-y-3">
+                {onlineResults.map((title) => (
+                  <button
+                    key={title}
+                    onClick={() =>
+                      addItem({
+                        source_type: "Online",
+                        title,
+                        detail: "Added from online search",
+                        content: onlineQuery.trim(),
+                      })
+                    }
+                    className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:border-[#c9d3fb] hover:bg-[#eef2ff]"
+                  >
+                    {title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeImport === "bibtex" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Import BibTeX or RIS</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Select a saved paper to generate BibTeX, or paste BibTeX/RIS text to save a new citation.
+              </p>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+                <select
+                  value={selectedBibtexItemId}
+                  onChange={(event) => setSelectedBibtexItemId(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-700 outline-none focus:border-[#9aaff8] focus:bg-white"
+                >
+                  <option value="">Select paper from your library</option>
+                  {libraryItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => generateBibtex()}
+                  disabled={!selectedBibtexItemId || generatingBibtex}
+                  className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+                >
+                  {generatingBibtex ? "Generating..." : "Generate"}
+                </button>
+
+                <button
+                  onClick={copyBibtex}
+                  disabled={!bibtexText.trim()}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                  <FaCopy className="text-xs" />
+                  Copy
+                </button>
+              </div>
+
+              <textarea
+                value={bibtexText}
+                onChange={(event) => setBibtexText(event.target.value)}
+                className="mt-5 min-h-40 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 outline-none focus:border-[#9aaff8] focus:bg-white"
+                placeholder="@article{key,\n  title = {Paper title},\n  author = {Author Name},\n  year = {2026}\n}"
+              />
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button
+                  onClick={addBibtex}
+                  disabled={!bibtexText.trim()}
+                  className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+                >
+                  Import Citation
+                </button>
+                <button
+                  onClick={copyBibtex}
+                  disabled={!bibtexText.trim()}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] disabled:cursor-not-allowed disabled:text-slate-300"
+                >
+                  Copy to Paper
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeImport === "zotero" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Import from Zotero</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Export a BibTeX or RIS file from Zotero, then import it from the BibTeX/RIS option.
+              </p>
+              <button
+                onClick={() => setActiveImport("bibtex")}
+                className="mt-5 rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white"
+              >
+                Open BibTeX/RIS Import
+              </button>
+            </div>
+          )}
+
+          {activeImport === "manual" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Add Manually</h2>
+              <div className="mt-5 grid gap-3">
+                <input
+                  value={manualTitle}
+                  onChange={(event) => setManualTitle(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Paper title"
+                />
+                <input
+                  value={manualAuthors}
+                  onChange={(event) => setManualAuthors(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Authors"
+                />
+                <input
+                  value={manualYear}
+                  onChange={(event) => setManualYear(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Year"
+                />
+              </div>
+              <button
+                onClick={addManual}
+                disabled={!manualTitle.trim()}
+                className="mt-3 rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+              >
+                Add Paper
+              </button>
+            </div>
+          )}
+
+          {message && (
+            <div className="mt-5 rounded-2xl border border-[#c7d2fe] bg-[#eef2ff] px-4 py-3 text-sm font-medium text-[#4562e1]">
+              {message}
+            </div>
+          )}
+
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <h2 className="text-base font-semibold text-slate-800">Your Papers</h2>
+            {libraryItems.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">Your library is ready. Add your first paper to begin.</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {libraryItems.map((item) => (
+                  <article key={item.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">{item.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.source_type} - {item.detail || "Saved in your library"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => generateBibtex(item.id)}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#4562e1] transition hover:border-[#bbcafc] hover:bg-[#eef2ff]"
+                      >
+                        BibTeX
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const scholarModes = [
+  { key: "author", title: "Track Author", description: "Save important authors and their focus areas" },
+  { key: "group", title: "Group Papers", description: "Cluster papers by theme, method, or dataset" },
+  { key: "reading", title: "Reading List", description: "Build a topic-specific reading track" },
+];
+
+function ScholarsPanel({ onOpenChat }) {
+  const [activeMode, setActiveMode] = useState("author");
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [scholarEntries, setScholarEntries] = useState([]);
+  const [message, setMessage] = useState("");
+  const [authorName, setAuthorName] = useState("");
+  const [authorFocus, setAuthorFocus] = useState("");
+  const [groupKind, setGroupKind] = useState("Theme");
+  const [groupTitle, setGroupTitle] = useState("");
+  const [groupPaperId, setGroupPaperId] = useState("");
+  const [readingTopic, setReadingTopic] = useState("");
+  const [readingPlan, setReadingPlan] = useState([]);
+
+  const loadScholarsData = async () => {
+    try {
+      const [libraryResponse, scholarsResponse] = await Promise.all([
+        axios.get("http://localhost:8000/library/", getAuthConfig()),
+        axios.get("http://localhost:8000/scholars/", getAuthConfig()),
+      ]);
+      setLibraryItems(libraryResponse.data ?? []);
+      setScholarEntries(scholarsResponse.data ?? []);
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Unable to load scholars workspace.");
+    }
+  };
+
+  useEffect(() => {
+    loadScholarsData();
+  }, []);
+
+  const addScholarEntry = async (payload) => {
+    try {
+      const response = await axios.post("http://localhost:8000/scholars/", payload, getAuthConfig());
+      setScholarEntries((prev) => [response.data, ...prev]);
+      setMessage(`${response.data.title} saved to Scholars Workspace.`);
+      return response.data;
+    } catch (err) {
+      setMessage(err.response?.data?.detail || "Could not save this scholar entry.");
+      return null;
+    }
+  };
+
+  const addAuthor = async () => {
+    const name = authorName.trim();
+    if (!name) {
+      return;
+    }
+
+    const saved = await addScholarEntry({
+      entry_type: "Author",
+      title: name,
+      detail: authorFocus.trim() || "Tracked author",
+    });
+
+    if (saved) {
+      setAuthorName("");
+      setAuthorFocus("");
+    }
+  };
+
+  const addPaperGroup = async () => {
+    const title = groupTitle.trim();
+    if (!title) {
+      return;
+    }
+
+    const selectedPaper = libraryItems.find((item) => String(item.id) === String(groupPaperId));
+    const content = JSON.stringify({
+      group_kind: groupKind,
+      paper_id: selectedPaper?.id ?? null,
+      paper_title: selectedPaper?.title ?? null,
+    });
+
+    const saved = await addScholarEntry({
+      entry_type: "Paper Group",
+      title,
+      detail: selectedPaper ? `${groupKind} - ${selectedPaper.title}` : groupKind,
+      content,
+    });
+
+    if (saved) {
+      setGroupTitle("");
+      setGroupPaperId("");
+    }
+  };
+
+  const buildReadingList = async () => {
+    const topic = readingTopic.trim();
+    if (!topic) {
+      return;
+    }
+
+    const normalizedTopic = topic.toLowerCase();
+    const matchedPapers = libraryItems.filter((item) =>
+      `${item.title} ${item.detail || ""}`.toLowerCase().includes(normalizedTopic),
+    );
+    const selectedPapers = (matchedPapers.length ? matchedPapers : libraryItems).slice(0, 5);
+    const plan = selectedPapers.map((paper, index) => ({
+      step: index + 1,
+      title: paper.title,
+      reason:
+        index === 0
+          ? "Start here to establish the core terminology and problem framing."
+          : "Read next to compare methods, findings, or limitations.",
+    }));
+
+    setReadingPlan(plan);
+
+    await addScholarEntry({
+      entry_type: "Reading List",
+      title: topic,
+      detail: `${plan.length} papers selected`,
+      content: JSON.stringify(plan),
+    });
+  };
+
+  const entriesByType = {
+    Author: scholarEntries.filter((entry) => entry.entry_type === "Author"),
+    "Paper Group": scholarEntries.filter((entry) => entry.entry_type === "Paper Group"),
+    "Reading List": scholarEntries.filter((entry) => entry.entry_type === "Reading List"),
+  };
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(242,246,255,0.92))] p-6 shadow-[0_40px_110px_rgba(120,138,204,0.18)] backdrop-blur-2xl md:p-8">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#4c69ed,#9bb1ff)] text-2xl text-white shadow-[0_18px_38px_rgba(73,104,235,0.26)]">
+            <FaGraduationCap />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#6e85df]">
+            Scholars
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800 md:text-5xl">
+            Scholars Workspace
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            Organize authors, paper groups, and topic-specific reading tracks.
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenChat}
+          className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
+        >
+          Open Research Chat
+        </button>
+      </div>
+
+      <div className="grid min-h-0 flex-1 gap-5 overflow-hidden lg:grid-cols-[320px_1fr]">
+        <div className="space-y-3 overflow-y-auto pr-1">
+          {scholarModes.map((mode) => (
+            <button
+              key={mode.key}
+              onClick={() => {
+                setActiveMode(mode.key);
+                setMessage("");
+              }}
+              className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
+                activeMode === mode.key
+                  ? "border-[#9aaff8] bg-[#eef2ff] text-slate-900 shadow-sm"
+                  : "border-white/80 bg-white/80 text-slate-600 hover:border-[#c9d3fb] hover:bg-white"
+              }`}
+            >
+              <p className="text-sm font-semibold">{mode.title}</p>
+              <p className="mt-1 text-xs leading-5 opacity-75">{mode.description}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="min-h-0 overflow-y-auto rounded-[30px] border border-white/80 bg-white/88 p-5 shadow-[0_24px_50px_rgba(138,153,202,0.16)]">
+          {activeMode === "author" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Track Important Authors</h2>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <input
+                  value={authorName}
+                  onChange={(event) => setAuthorName(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Author name"
+                />
+                <input
+                  value={authorFocus}
+                  onChange={(event) => setAuthorFocus(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Research focus or recurring concept"
+                />
+              </div>
+              <button
+                onClick={addAuthor}
+                disabled={!authorName.trim()}
+                className="mt-3 rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+              >
+                Save Author
+              </button>
+            </div>
+          )}
+
+          {activeMode === "group" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Group Papers</h2>
+              <div className="mt-5 grid gap-3">
+                <select
+                  value={groupKind}
+                  onChange={(event) => setGroupKind(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                >
+                  <option>Theme</option>
+                  <option>Method</option>
+                  <option>Dataset</option>
+                </select>
+                <input
+                  value={groupTitle}
+                  onChange={(event) => setGroupTitle(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Group name, e.g. Contrastive learning methods"
+                />
+                <select
+                  value={groupPaperId}
+                  onChange={(event) => setGroupPaperId(event.target.value)}
+                  className="min-h-12 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                >
+                  <option value="">Attach a saved library paper optional</option>
+                  {libraryItems.map((paper) => (
+                    <option key={paper.id} value={paper.id}>
+                      {paper.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={addPaperGroup}
+                disabled={!groupTitle.trim()}
+                className="mt-3 rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+              >
+                Save Group
+              </button>
+            </div>
+          )}
+
+          {activeMode === "reading" && (
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800">Build Reading List</h2>
+              <div className="mt-5 flex flex-col gap-3 md:flex-row">
+                <input
+                  value={readingTopic}
+                  onChange={(event) => setReadingTopic(event.target.value)}
+                  className="min-h-12 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none focus:border-[#9aaff8] focus:bg-white"
+                  placeholder="Literature review topic"
+                />
+                <button
+                  onClick={buildReadingList}
+                  disabled={!readingTopic.trim() || libraryItems.length === 0}
+                  className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-300"
+                >
+                  Build List
+                </button>
+              </div>
+              {libraryItems.length === 0 && (
+                <p className="mt-3 text-sm text-slate-500">Add papers in Library first, then build reading tracks here.</p>
+              )}
+              {readingPlan.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  {readingPlan.map((paper) => (
+                    <div key={`${paper.step}-${paper.title}`} className="rounded-2xl bg-slate-50 px-4 py-3">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {paper.step}. {paper.title}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{paper.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {message && (
+            <div className="mt-5 rounded-2xl border border-[#c7d2fe] bg-[#eef2ff] px-4 py-3 text-sm font-medium text-[#4562e1]">
+              {message}
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-4 border-t border-slate-100 pt-5 md:grid-cols-3">
+            {Object.entries(entriesByType).map(([type, entries]) => (
+              <div key={type} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <h3 className="text-sm font-semibold text-slate-800">{type}</h3>
+                {entries.length === 0 ? (
+                  <p className="mt-3 text-xs leading-5 text-slate-500">Nothing saved yet.</p>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    {entries.slice(0, 4).map((entry) => (
+                      <div key={entry.id} className="rounded-xl bg-white px-3 py-2">
+                        <p className="text-xs font-semibold text-slate-700">{entry.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">{entry.detail || entry.entry_type}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SectionPanel({ sectionKey, onOpenChat }) {
   const section = sectionConfig[sectionKey];
   const Icon = section.icon;
@@ -150,20 +1289,39 @@ function SectionPanel({ sectionKey, onOpenChat }) {
 
 export default function Dashboard() {
   const [activeSection, setActiveSection] = useState("chat");
+  const [currentUser, setCurrentUser] = useState("");
+
+  useEffect(() => {
+    setCurrentUser(localStorage.getItem("loggedInUser") || "");
+  }, []);
 
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(222,231,255,0.95),rgba(241,245,255,0.92)_38%,rgba(231,237,255,0.84)_72%,rgba(221,228,250,0.75))] p-3 text-slate-900 md:p-5">
       <div className="relative mx-auto flex min-h-[calc(100vh-24px)] max-w-[1600px] gap-4 overflow-hidden rounded-[40px] border border-white/60 bg-[linear-gradient(180deg,rgba(247,249,255,0.78),rgba(235,240,255,0.72))] p-3 shadow-[0_45px_120px_rgba(148,163,218,0.24)] md:min-h-[calc(100vh-40px)] md:gap-6 md:p-5">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(113,140,243,0.18),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.8),transparent_28%)]" />
         <div className="relative hidden xl:block">
-          <Sidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+          <Sidebar
+            activeSection={activeSection}
+            onSectionChange={setActiveSection}
+            currentUser={currentUser}
+          />
         </div>
-        <div className="relative flex min-w-0 flex-1">
+        <div className="relative flex min-w-0 flex-1 flex-col gap-4">
+          <div className="flex min-h-0 flex-1">
           {activeSection === "chat" ? (
             <ChatBox />
+          ) : activeSection === "search" ? (
+            <SearchPanel onOpenChat={() => setActiveSection("chat")} />
+          ) : activeSection === "navigator" ? (
+            <ScienceNavigatorPanel onOpenChat={() => setActiveSection("chat")} />
+          ) : activeSection === "library" ? (
+            <LibraryPanel onOpenChat={() => setActiveSection("chat")} />
+          ) : activeSection === "scholars" ? (
+            <ScholarsPanel onOpenChat={() => setActiveSection("chat")} />
           ) : (
             <SectionPanel sectionKey={activeSection} onOpenChat={() => setActiveSection("chat")} />
           )}
+          </div>
         </div>
       </div>
     </div>
