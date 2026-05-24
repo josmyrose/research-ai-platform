@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes import auth, chat, library, scholars, search, upload
 from dotenv import load_dotenv
 from app.db.database import Base, engine
+from app.db.migrations import ensure_runtime_schema
 
 load_dotenv()
 
@@ -18,6 +19,7 @@ app.add_middleware(
 )
 # ✅ create tables safely
 Base.metadata.create_all(bind=engine)
+ensure_runtime_schema()
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(library.router)

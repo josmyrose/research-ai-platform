@@ -19,6 +19,7 @@ class Chat(Base):
     id = Column(Integer, primary_key=True, index=True)
     message = Column(String)
     response = Column(String)
+    mode = Column(String, nullable=False, default="lite")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 

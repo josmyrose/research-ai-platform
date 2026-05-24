@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import {
   FaArrowUp,
   FaBookOpen,
+  FaClockRotateLeft,
   FaCopy,
   FaDatabase,
   FaFileLines,
@@ -14,15 +14,19 @@ import {
 } from "react-icons/fa6";
 
 import Sidebar from "../components/Sidebar";
-import ChatBox from "../components/ChatBox";
-
-const getAuthConfig = () => {
-  const token = localStorage.getItem("token");
-
-  return token
-    ? { headers: { Authorization: `Bearer ${token}` } }
-    : {};
-};
+import ChatBox from "../../chat/components/ChatBox";
+import {
+  createLibraryItem,
+  createScholarEntry,
+  getChatHistory,
+  getLibraryBibtex,
+  getLibraryItems,
+  getScholarEntries,
+  searchResearch,
+  uploadLibraryFile,
+} from "../../../services/researchService";
+import { useAppStore } from "../../../store/useAppStore";
+import { LoadingSkeleton } from "../../../ui";
 
 const sectionConfig = {
   search: {
@@ -109,6 +113,12 @@ const searchPrompts = [
   "Show findings about evaluation results",
   "Locate citations or related work",
 ];
+
+const chatModeLabels = {
+  lite: "Lite Mode",
+  deep_review: "Deep Review",
+  source_mode: "Source Mode",
+};
 
 const navigatorExamples = [
   "AI for early disease detection",
@@ -305,10 +315,7 @@ function SearchPanel({ onOpenChat }) {
     setError("");
 
     try {
-      const response = await axios.get("http://localhost:8000/search/", {
-        ...getAuthConfig(),
-        params: { q: nextQuery, limit: 8 },
-      });
+      const response = await searchResearch(nextQuery, 8);
 
       setResults(response.data.results ?? []);
     } catch (err) {
@@ -383,9 +390,7 @@ function SearchPanel({ onOpenChat }) {
 
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
         {loading ? (
-          <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-sm text-slate-500 shadow-sm">
-            Searching your indexed research documents...
-          </div>
+          <LoadingSkeleton lines={4} />
         ) : error ? (
           <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-5 text-sm text-rose-700">
             {error}
@@ -496,7 +501,7 @@ function LibraryPanel({ onOpenChat }) {
 
   const loadLibraryItems = async () => {
     try {
-      const response = await axios.get("http://localhost:8000/library/", getAuthConfig());
+      const response = await getLibraryItems();
       setLibraryItems(response.data ?? []);
     } catch (err) {
       setMessage(err.response?.data?.detail || "Unable to load your library.");
@@ -509,7 +514,7 @@ function LibraryPanel({ onOpenChat }) {
 
   const addItem = async (payload) => {
     try {
-      const response = await axios.post("http://localhost:8000/library/", payload, getAuthConfig());
+      const response = await createLibraryItem(payload);
       setLibraryItems((prev) => [response.data, ...prev]);
       setMessage(`${response.data.title} added to your library.`);
       return response.data;
@@ -530,7 +535,7 @@ function LibraryPanel({ onOpenChat }) {
     setMessage("");
 
     try {
-      const response = await axios.post("http://localhost:8000/upload/", formData, getAuthConfig());
+      const response = await uploadLibraryFile(formData);
       setLibraryItems((prev) => [response.data.library_item, ...prev]);
       setMessage(`${response.data.filename} uploaded and saved to your library.`);
     } catch (err) {
@@ -581,10 +586,7 @@ function LibraryPanel({ onOpenChat }) {
     setMessage("");
 
     try {
-      const response = await axios.get(
-        `http://localhost:8000/library/${itemId}/bibtex`,
-        getAuthConfig(),
-      );
+      const response = await getLibraryBibtex(itemId);
       setSelectedBibtexItemId(String(response.data.item.id));
       setBibtexText(response.data.bibtex);
       setActiveImport("bibtex");
@@ -941,8 +943,8 @@ function ScholarsPanel({ onOpenChat }) {
   const loadScholarsData = async () => {
     try {
       const [libraryResponse, scholarsResponse] = await Promise.all([
-        axios.get("http://localhost:8000/library/", getAuthConfig()),
-        axios.get("http://localhost:8000/scholars/", getAuthConfig()),
+        getLibraryItems(),
+        getScholarEntries(),
       ]);
       setLibraryItems(libraryResponse.data ?? []);
       setScholarEntries(scholarsResponse.data ?? []);
@@ -952,12 +954,12 @@ function ScholarsPanel({ onOpenChat }) {
   };
 
   useEffect(() => {
-    loadScholarsData();
+    queueMicrotask(loadScholarsData);
   }, []);
 
   const addScholarEntry = async (payload) => {
     try {
-      const response = await axios.post("http://localhost:8000/scholars/", payload, getAuthConfig());
+      const response = await createScholarEntry(payload);
       setScholarEntries((prev) => [response.data, ...prev]);
       setMessage(`${response.data.title} saved to Scholars Workspace.`);
       return response.data;
@@ -1287,13 +1289,105 @@ function SectionPanel({ sectionKey, onOpenChat }) {
   );
 }
 
-export default function Dashboard() {
-  const [activeSection, setActiveSection] = useState("chat");
-  const [currentUser, setCurrentUser] = useState("");
+function HistoryPanel({ onOpenChat }) {
+  const [historyItems, setHistoryItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadHistory = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await getChatHistory();
+      setHistoryItems(response.data ?? []);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Unable to load chat history.");
+      setHistoryItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setCurrentUser(localStorage.getItem("loggedInUser") || "");
+    queueMicrotask(loadHistory);
   }, []);
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[36px] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(242,246,255,0.92))] p-6 shadow-[0_40px_110px_rgba(120,138,204,0.18)] backdrop-blur-2xl md:p-8">
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-[24px] bg-[linear-gradient(135deg,#4c69ed,#9bb1ff)] text-2xl text-white shadow-[0_18px_38px_rgba(73,104,235,0.26)]">
+            <FaClockRotateLeft />
+          </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#6e85df]">
+            Chat History
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-800 md:text-5xl">
+            Your saved conversations
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base">
+            Questions and answers are stored by login, so each user sees only their own history.
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenChat}
+          className="rounded-2xl bg-[#4968eb] px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
+        >
+          Open Research Chat
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {loading ? (
+          <LoadingSkeleton lines={6} />
+        ) : error ? (
+          <div className="rounded-[28px] border border-rose-100 bg-rose-50 p-5 text-sm text-rose-700">
+            {error}
+          </div>
+        ) : historyItems.length === 0 ? (
+          <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 text-sm leading-6 text-slate-500 shadow-sm">
+            No chat history yet. Ask a question in Research Chat and it will appear here after it is saved.
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {historyItems.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-[28px] border border-white/80 bg-white/85 p-5 shadow-[0_18px_36px_rgba(137,154,204,0.12)]"
+              >
+                <div className="mb-4 inline-flex rounded-full border border-[#c7d2fe] bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#4562e1]">
+                  {chatModeLabels[item.mode] ?? "Lite Mode"}
+                </div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6e85df]">
+                  Question
+                </p>
+                <p className="mt-2 text-sm leading-7 text-slate-700">{item.message}</p>
+                <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Answer
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">{item.response}</p>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export default function Dashboard() {
+  const activeSection = useAppStore((state) => state.activeSection);
+  const currentUser = useAppStore((state) => state.currentUser);
+  const newChatToken = useAppStore((state) => state.newChatToken);
+  const setActiveSection = useAppStore((state) => state.setActiveSection);
+  const startNewChat = useAppStore((state) => state.startNewChat);
+  const refreshCurrentUser = useAppStore((state) => state.refreshCurrentUser);
+
+  useEffect(() => {
+    refreshCurrentUser();
+  }, [refreshCurrentUser]);
 
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(222,231,255,0.95),rgba(241,245,255,0.92)_38%,rgba(231,237,255,0.84)_72%,rgba(221,228,250,0.75))] p-3 text-slate-900 md:p-5">
@@ -1303,15 +1397,18 @@ export default function Dashboard() {
           <Sidebar
             activeSection={activeSection}
             onSectionChange={setActiveSection}
+            onNewChat={startNewChat}
             currentUser={currentUser}
           />
         </div>
         <div className="relative flex min-w-0 flex-1 flex-col gap-4">
           <div className="flex min-h-0 flex-1">
           {activeSection === "chat" ? (
-            <ChatBox />
+            <ChatBox resetSignal={newChatToken} />
           ) : activeSection === "search" ? (
             <SearchPanel onOpenChat={() => setActiveSection("chat")} />
+          ) : activeSection === "history" ? (
+            <HistoryPanel onOpenChat={() => setActiveSection("chat")} />
           ) : activeSection === "navigator" ? (
             <ScienceNavigatorPanel onOpenChat={() => setActiveSection("chat")} />
           ) : activeSection === "library" ? (
