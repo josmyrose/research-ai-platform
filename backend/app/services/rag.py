@@ -1,14 +1,34 @@
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
+import requests
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import CharacterTextSplitter
 
+from app.services.chat_modes import get_chat_mode_config
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 DB_PATH = BASE_DIR / "faiss_index"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+OLLAMA_NOT_RUNNING_MESSAGE = (
+    "Ollama is not available right now. Start Ollama locally, then ask again."
+)
+OLLAMA_MODEL_MISSING_MESSAGE = (
+    f"Ollama is running, but the '{OLLAMA_MODEL}' model is not installed. "
+    f"Install it with: ollama pull {OLLAMA_MODEL}"
+)
+ANSWER_GENERATOR_UNAVAILABLE_MESSAGES = {
+    OLLAMA_NOT_RUNNING_MESSAGE,
+    OLLAMA_MODEL_MISSING_MESSAGE,
+}
+LEGACY_ANSWER_GENERATOR_UNAVAILABLE_PREFIX = (
+    "I found relevant document context, but the answer generator is not available right now."
+)
 
 STOPWORDS = {
     "a",
@@ -140,10 +160,94 @@ def _search_limit_for_user(db, user_id):
     return max(5, len(db.docstore._dict))
 
 
-def query_rag(query, user_id=None):
-    if not DB_PATH.exists():
-        return "No documents have been indexed yet. Upload a PDF to start querying your research library."
+def _format_context(docs, max_context_chars):
+    context_parts = []
+    used_chars = 0
 
+    for index, doc in enumerate(docs, start=1):
+        content = re.sub(r"\s+", " ", doc.page_content or "").strip()
+        if not content:
+            continue
+
+        filename = doc.metadata.get("filename") or "Indexed document"
+        page = doc.metadata.get("page")
+        source = f"{filename}, page {int(page) + 1}" if page is not None else filename
+        part = f"[Source {index}: {source}]\n{content}"
+
+        if used_chars + len(part) > max_context_chars:
+            remaining_chars = max_context_chars - used_chars
+            if remaining_chars <= 0:
+                break
+            part = part[:remaining_chars]
+
+        context_parts.append(part)
+        used_chars += len(part)
+
+    return "\n\n".join(context_parts).strip()
+
+
+def _generate_ollama_answer(query, context, mode_config):
+    prompt = f"""
+You are a research assistant. Answer the user's question using only the provided document context.
+If the context does not contain enough information, say that the uploaded documents do not provide enough information.
+Mode: {mode_config.label}
+Mode instructions: {mode_config.instruction}
+
+Question:
+{query}
+
+Document context:
+{context}
+""".strip()
+
+    response = requests.post(
+        f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+        json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": mode_config.temperature,
+            },
+        },
+        timeout=(5, 120),
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    return (data.get("response") or "").strip()
+
+
+def _check_answer_generator():
+    try:
+        response = requests.get(
+            f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags",
+            timeout=(2, 5),
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        return OLLAMA_NOT_RUNNING_MESSAGE
+
+    models = response.json().get("models") or []
+    model_names = {model.get("name", "").split(":", 1)[0] for model in models}
+    if OLLAMA_MODEL not in model_names:
+        return OLLAMA_MODEL_MISSING_MESSAGE
+
+    return None
+
+
+def is_answer_generator_unavailable(response):
+    return (
+        response in ANSWER_GENERATOR_UNAVAILABLE_MESSAGES
+        or (response or "").startswith(LEGACY_ANSWER_GENERATOR_UNAVAILABLE_PREFIX)
+    )
+
+
+def query_rag(query, user_id=None, mode=None):
+    if not DB_PATH.exists():
+        return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
+
+    mode_config = get_chat_mode_config(mode)
     embeddings = _get_embeddings()
 
     db = FAISS.load_local(
@@ -153,9 +257,16 @@ def query_rag(query, user_id=None):
     )
 
     if not _has_indexed_docs_for_user(db, user_id):
-        return "No documents have been indexed yet. Upload a PDF to start querying your research library."
+        return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
 
-    docs = db.similarity_search(query, k=_search_limit_for_user(db, user_id))
+    generator_error = _check_answer_generator()
+    if generator_error:
+        return generator_error
+
+    docs = db.similarity_search(
+        query,
+        k=max(mode_config.retrieval_chunks, _search_limit_for_user(db, user_id)),
+    )
 
     # 🔥 FILTER BY USER
     if user_id is not None:
@@ -165,13 +276,21 @@ def query_rag(query, user_id=None):
         ]
 
     if not docs:
-        return "No relevant information found."
+        return "There is no specific document in the folder for this question. Upload the corresponding PDF, then ask again."
 
-    context = "\n\n".join(
-        doc.page_content for doc in docs if doc.page_content
-    ).strip()
+    context = _format_context(
+        docs[: mode_config.retrieval_chunks],
+        mode_config.max_context_chars,
+    )
+    if not context:
+        return "There is no specific document in the folder for this question. Upload the corresponding PDF, then ask again."
 
-    return context or "No relevant information found."
+    try:
+        answer = _generate_ollama_answer(query, context, mode_config)
+    except requests.RequestException:
+        return OLLAMA_NOT_RUNNING_MESSAGE
+
+    return answer or OLLAMA_NOT_RUNNING_MESSAGE
 
 
 def search_documents(query, user_id=None, limit=8):

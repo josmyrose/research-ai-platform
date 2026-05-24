@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import axios from "axios";
+import { useEffect, useMemo, useState } from "react";
 import {
   FaArrowUp,
   FaBookOpen,
@@ -11,6 +10,9 @@ import {
   FaRocket,
   FaWandMagicSparkles,
 } from "react-icons/fa6";
+
+import { getChatHistory, sendChatMessage, uploadResearchFile } from "../../../services/researchService";
+import { LoadingSkeleton } from "../../../ui";
 
 const quickActions = [
   { icon: FaBolt, label: "General Q&A" },
@@ -26,19 +28,29 @@ const suggestions = [
   "How can interpretability improve trust in deep learning systems?",
 ];
 
-const starterModes = [
-  { icon: FaRocket, label: "Lite" },
-  { icon: FaFlask, label: "Deep Review" },
-  { icon: FaBookOpen, label: "Source Mode" },
+const chatModes = [
+  {
+    key: "lite",
+    icon: FaRocket,
+    label: "Lite",
+    helper: "Fast, concise answers from the closest document context.",
+  },
+  {
+    key: "deep_review",
+    icon: FaFlask,
+    label: "Deep Review",
+    helper: "Broader retrieval with findings, evidence, limits, and next steps.",
+  },
+  {
+    key: "source_mode",
+    icon: FaBookOpen,
+    label: "Source Mode",
+    helper: "Strictly grounded answers grouped by source.",
+  },
 ];
 
-const getAuthConfig = () => {
-  const token = localStorage.getItem("token");
-
-  return token
-    ? { headers: { Authorization: `Bearer ${token}` } }
-    : {};
-};
+const getModeLabel = (modeKey) =>
+  chatModes.find((mode) => mode.key === modeKey)?.label ?? "Lite";
 
 const handleUpload = async (file) => {
   if (!file) {
@@ -49,18 +61,67 @@ const handleUpload = async (file) => {
   formData.append("file", file);
 
   try {
-    const response = await axios.post("http://localhost:8000/upload/", formData, getAuthConfig());
+    const response = await uploadResearchFile(formData);
     return response.data;
   } catch (err) {
     throw new Error(err.response?.data?.detail || "Upload failed");
   }
 };
 
-export default function ChatBox() {
+const mapHistoryToChat = (historyItems) =>
+  historyItems
+    .slice()
+    .reverse()
+    .flatMap((item) => [
+      { type: "user", text: item.message, mode: item.mode },
+      { type: "ai", text: item.response, mode: item.mode },
+    ]);
+
+export default function ChatBox({ resetSignal = 0 }) {
   const [msg, setMsg] = useState("");
   const [chat, setChat] = useState([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [activeMode, setActiveMode] = useState("lite");
+
+  const activeModeConfig = chatModes.find((mode) => mode.key === activeMode) ?? chatModes[0];
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+
+      try {
+        const response = await getChatHistory();
+        if (isMounted) {
+          setChat(mapHistoryToChat(response.data ?? []));
+        }
+      } catch {
+        if (isMounted) {
+          setChat([]);
+        }
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (resetSignal > 0) {
+      setChat([]);
+      setMsg("");
+    }
+  }, [resetSignal]);
 
   const isEmpty = chat.length === 0;
   const helperText = useMemo(
@@ -77,25 +138,30 @@ export default function ChatBox() {
       return;
     }
 
-    setChat((prev) => [...prev, { type: "user", text: nextMessage }]);
+    setChat((prev) => [...prev, { type: "user", text: nextMessage, mode: activeMode }]);
     setMsg("");
     setLoading(true);
 
     try {
-      const res = await axios.post("http://localhost:8000/chat/", {
-        message: nextMessage,
-      }, getAuthConfig());
+      const res = await sendChatMessage(nextMessage, activeMode);
 
       setChat((prev) => [
         ...prev,
-        { type: "ai", text: res.data.response },
+        { type: "ai", text: res.data.response, mode: activeMode },
       ]);
-    } catch (err) {
+    } catch (error) {
+      const errorMessage =
+        error.code === "ECONNABORTED"
+          ? "The answer is taking too long. Check that Ollama is running and the selected model is installed, then try again."
+          : error.response?.data?.detail ||
+            "I couldn't reach the research assistant service. Please try again in a moment.";
+
       setChat((prev) => [
         ...prev,
         {
           type: "ai",
-          text: "I couldn't reach the research assistant service. Please try again in a moment.",
+          text: errorMessage,
+          mode: activeMode,
         },
       ]);
     } finally {
@@ -117,6 +183,7 @@ export default function ChatBox() {
         {
           type: "ai",
           text: `Uploaded ${result.filename} (${result.page_count} pages, ${result.chunk_count} indexed chunks).\n\nSummary: ${result.summary}`,
+          mode: activeMode,
         },
       ]);
     } catch (error) {
@@ -125,6 +192,7 @@ export default function ChatBox() {
         {
           type: "ai",
           text: error.message,
+          mode: activeMode,
         },
       ]);
     } finally {
@@ -169,16 +237,32 @@ export default function ChatBox() {
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
           <div className="flex flex-wrap items-center gap-2">
-            {starterModes.map(({ icon: Icon, label }) => (
-              <button
-                key={label}
-                className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] hover:text-[#4763e4]"
+            {chatModes.map((mode) => {
+              const ModeIcon = mode.icon;
+              const isActive = activeMode === mode.key;
+
+              return (
+                <button
+                key={mode.key}
+                type="button"
+                title={mode.helper}
+                onClick={() => setActiveMode(mode.key)}
+                className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                  isActive
+                    ? "border-[#9aaff8] bg-[#eef2ff] text-[#3455d5] shadow-sm"
+                    : "border-slate-200 bg-slate-50 text-slate-600 hover:border-[#bbcafc] hover:bg-[#eef2ff] hover:text-[#4763e4]"
+                }`}
               >
-                <Icon className="text-xs" />
-                {label}
+                <ModeIcon className="text-xs" />
+                {mode.label}
               </button>
-            ))}
+              );
+            })}
           </div>
+
+          <p className="w-full text-xs leading-5 text-slate-400 md:w-auto">
+            {activeModeConfig.helper}
+          </p>
 
           <div className="flex items-center gap-2">
             <label className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500 transition hover:border-[#bbcafc] hover:bg-[#eef2ff] hover:text-[#4763e4]">
@@ -202,19 +286,29 @@ export default function ChatBox() {
         </div>
       </div>
 
-      {isEmpty ? (
+      {historyLoading ? (
+        <div className="flex-1 overflow-y-auto pr-1">
+          <div className="mx-auto max-w-4xl">
+            <LoadingSkeleton lines={5} />
+          </div>
+        </div>
+      ) : isEmpty ? (
         <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-2 pb-4 pt-2">
           <div className="mb-8 flex flex-wrap items-center justify-center gap-3">
-            {quickActions.map(({ icon: Icon, label }) => (
-              <button
-                key={label}
-                onClick={() => setMsg(`Help me with ${label.toLowerCase()} for my research project.`)}
+            {quickActions.map((action) => {
+              const ActionIcon = action.icon;
+
+              return (
+                <button
+                key={action.label}
+                onClick={() => setMsg(`Help me with ${action.label.toLowerCase()} for my research project.`)}
                 className="flex items-center gap-3 rounded-full border border-white/80 bg-white/85 px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-[#c9d3fb] hover:text-[#4562e1]"
               >
-                <Icon className="text-[#4968eb]" />
-                {label}
+                <ActionIcon className="text-[#4968eb]" />
+                {action.label}
               </button>
-            ))}
+              );
+            })}
           </div>
 
           <div className="grid w-full max-w-4xl gap-4">
@@ -256,6 +350,13 @@ export default function ChatBox() {
                       : "border border-white/80 bg-white/85 text-slate-700"
                   }`}
                 >
+                  {entry.mode && (
+                    <p className={`mb-2 text-xs font-semibold uppercase tracking-[0.16em] ${
+                      entry.type === "user" ? "text-white/70" : "text-[#6e85df]"
+                    }`}>
+                      {getModeLabel(entry.mode)}
+                    </p>
+                  )}
                   {entry.text}
                 </div>
               </div>
@@ -263,8 +364,11 @@ export default function ChatBox() {
 
             {(loading || uploading) && (
               <div className="flex justify-start">
-                <div className="rounded-[28px] border border-white/80 bg-white/85 px-5 py-4 text-sm text-slate-500 shadow-sm md:text-base">
-                  {uploading ? "Processing document and generating summary..." : "Research assistant is thinking..."}
+                <div className="w-full max-w-md">
+                  <p className="mb-3 text-sm font-medium text-slate-500">
+                    {uploading ? "Indexing your PDF..." : "Searching documents and asking Ollama..."}
+                  </p>
+                  <LoadingSkeleton lines={uploading ? 4 : 3} />
                 </div>
               </div>
             )}

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import axios from "axios";
+
+import { signup } from "../../../services/authService";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -7,7 +8,7 @@ export default function Register() {
 
   const handleRegister = async () => {
     try {
-      await axios.post("http://localhost:8000/auth/signup", {
+      await signup({
         username: email,
         password: password,
       });

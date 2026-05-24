@@ -1,5 +1,7 @@
 import { useState } from "react";
-import axios from "axios";
+
+import { login } from "../../../services/authService";
+import { authStorage } from "../../../services/storageService";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -7,15 +9,17 @@ export default function Login() {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post("http://localhost:8000/auth/login", {
+      const res = await login({
         username: email,   
       password: password,
       });
 
-      localStorage.setItem("token", res.data.access_token);
-      localStorage.setItem("loggedInUser", res.data.username || email);
+      authStorage.setSession({
+        token: res.data.access_token,
+        username: res.data.username || email,
+      });
       window.location.href = "/dashboard";
-    } catch (err) {
+    } catch {
       alert("Login failed");
     }
   };

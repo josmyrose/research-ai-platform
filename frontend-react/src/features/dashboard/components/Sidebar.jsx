@@ -13,8 +13,11 @@ import {
   FaCircleUser,
 } from "react-icons/fa6";
 
+import { authStorage } from "../../../services/storageService";
+
 const primaryItems = [
   { key: "search", icon: FaMagnifyingGlass, label: "Search" },
+  { key: "history", icon: FaClockRotateLeft, label: "History" },
   { key: "navigator", icon: FaCompass, label: "Science Navigator" },
 ];
 
@@ -51,10 +54,9 @@ function NavButton({ item, activeSection, onSectionChange }) {
   );
 }
 
-export default function Sidebar({ activeSection, onSectionChange, currentUser }) {
+export default function Sidebar({ activeSection, onSectionChange, onNewChat, currentUser }) {
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("loggedInUser");
+    authStorage.clearSession();
     window.location.href = "/";
   };
 
@@ -72,7 +74,7 @@ export default function Sidebar({ activeSection, onSectionChange, currentUser })
         </div>
 
         <button
-          onClick={() => onSectionChange("chat")}
+          onClick={onNewChat}
           className="mb-6 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#4968eb] px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(73,104,235,0.28)] transition hover:-translate-y-0.5 hover:bg-[#3f5bdd]"
         >
           <FaPlus className="text-xs" />
@@ -147,7 +149,7 @@ export default function Sidebar({ activeSection, onSectionChange, currentUser })
         )}
 
         <button
-          onClick={() => onSectionChange("chat")}
+          onClick={() => onSectionChange("history")}
           className="w-full rounded-[24px] border border-white/70 bg-white/70 p-4 text-left shadow-sm transition hover:bg-white/80"
         >
           <div className="mb-3 flex items-center gap-3 text-slate-700">
@@ -155,7 +157,7 @@ export default function Sidebar({ activeSection, onSectionChange, currentUser })
             <span className="text-sm font-semibold">Recent session</span>
           </div>
           <p className="text-sm leading-6 text-slate-500">
-            Multi-agent literature synthesis for new materials discovery.
+            Review your saved questions and answers for this login.
           </p>
         </button>
 
