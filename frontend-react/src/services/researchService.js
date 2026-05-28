@@ -1,9 +1,16 @@
 import { apiClient, getAuthConfig } from "../api/client";
 
-export const sendChatMessage = (message, mode = "lite") =>
-  apiClient.post("/chat/", { message, mode }, getAuthConfig());
+export const sendChatMessage = (message, options = {}) =>
+  apiClient.post("/chat/", { message, ...options }, getAuthConfig());
 
-export const getChatHistory = () => apiClient.get("/chat/history", getAuthConfig());
+export const getChatHistory = (search = "") =>
+  apiClient.get("/chat/history", {
+    ...getAuthConfig(),
+    params: search ? { search } : {},
+  });
+
+export const deleteChatHistoryItem = (chatId) =>
+  apiClient.delete(`/chat/history/${chatId}`, getAuthConfig());
 
 export const uploadResearchFile = (formData) =>
   apiClient.post("/upload/", formData, getAuthConfig());
