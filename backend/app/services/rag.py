@@ -1,9 +1,12 @@
 import os
 import re
+import zipfile
 from collections import Counter
 from pathlib import Path
+from xml.etree import ElementTree
 
 import requests
+from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -57,14 +60,70 @@ STOPWORDS = {
     "with",
 }
 
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".pptx", ".csv"}
+
 
 def _get_embeddings():
     return HuggingFaceEmbeddings()
 
 
-def _load_documents(file_path):
+def _load_pdf_documents(file_path):
     loader = PyPDFLoader(str(file_path))
     return loader.load()
+
+
+def _xml_text_from_office_archive(file_path, member_prefix):
+    text_parts = []
+
+    with zipfile.ZipFile(file_path) as archive:
+        members = sorted(
+            name
+            for name in archive.namelist()
+            if name.startswith(member_prefix) and name.endswith(".xml")
+        )
+
+        for member in members:
+            root = ElementTree.fromstring(archive.read(member))
+            texts = [
+                node.text
+                for node in root.iter()
+                if node.tag.endswith("}t") and node.text
+            ]
+            if texts:
+                text_parts.append(" ".join(texts))
+
+    return "\n\n".join(text_parts).strip()
+
+
+def _load_text_documents(file_path):
+    text = Path(file_path).read_text(encoding="utf-8", errors="ignore")
+    return [Document(page_content=text, metadata={"page": 0})]
+
+
+def _load_docx_documents(file_path):
+    text = _xml_text_from_office_archive(file_path, "word/document")
+    return [Document(page_content=text, metadata={"page": 0})]
+
+
+def _load_pptx_documents(file_path):
+    text = _xml_text_from_office_archive(file_path, "ppt/slides/slide")
+    return [Document(page_content=text, metadata={"page": 0})]
+
+
+def _load_documents(file_path):
+    file_path = Path(file_path)
+    extension = file_path.suffix.lower()
+
+    if extension == ".pdf":
+        return _load_pdf_documents(file_path)
+    if extension in {".txt", ".csv"}:
+        return _load_text_documents(file_path)
+    if extension == ".docx":
+        return _load_docx_documents(file_path)
+    if extension == ".pptx":
+        return _load_pptx_documents(file_path)
+
+    raise ValueError(f"Unsupported file type: {extension}")
 
 
 def _split_documents(documents):
@@ -111,7 +170,7 @@ def summarize_text(text, max_sentences=4):
     return " ".join(ordered_summary)
 
 
-def process_pdf(file_path, user_id=None):
+def process_document(file_path, user_id=None):
     file_path = Path(file_path)
     documents = _load_documents(file_path)
     summary = summarize_text(_extract_text(documents))
@@ -119,6 +178,7 @@ def process_pdf(file_path, user_id=None):
     for document in documents:
         document.metadata["user_id"] = user_id
         document.metadata["filename"] = file_path.name
+        document.metadata["file_type"] = file_path.suffix.lower().lstrip(".").upper()
 
     split_docs = _split_documents(documents)
     embeddings = _get_embeddings()
@@ -137,10 +197,15 @@ def process_pdf(file_path, user_id=None):
 
     return {
         "filename": file_path.name,
+        "file_type": file_path.suffix.lower().lstrip(".").upper(),
         "summary": summary,
         "page_count": len(documents),
         "chunk_count": len(split_docs),
     }
+
+
+def process_pdf(file_path, user_id=None):
+    return process_document(file_path, user_id=user_id)
 
 
 def _has_indexed_docs_for_user(db, user_id):
@@ -186,12 +251,24 @@ def _format_context(docs, max_context_chars):
     return "\n\n".join(context_parts).strip()
 
 
-def _generate_ollama_answer(query, context, mode_config):
+def _citation_instruction(citation_style):
+    style = (citation_style or "numbered").strip().lower()
+    if style == "apa":
+        return "Use APA-style parenthetical citations when source metadata is available."
+    if style == "ieee":
+        return "Use IEEE-style numbered citations such as [1], [2]."
+    if style == "inline":
+        return "Use brief inline source mentions near the relevant claim."
+    return "Use numbered citations such as [1], [2] for supported claims."
+
+
+def _generate_ollama_answer(query, context, mode_config, citation_style="numbered"):
     prompt = f"""
 You are a research assistant. Answer the user's question using only the provided document context.
 If the context does not contain enough information, say that the uploaded documents do not provide enough information.
 Mode: {mode_config.label}
 Mode instructions: {mode_config.instruction}
+Citation instructions: {_citation_instruction(citation_style)}
 
 Question:
 {query}
@@ -291,6 +368,99 @@ def query_rag(query, user_id=None, mode=None):
         return OLLAMA_NOT_RUNNING_MESSAGE
 
     return answer or OLLAMA_NOT_RUNNING_MESSAGE
+
+
+def _serialize_source(doc, index, score=None):
+    filename = doc.metadata.get("filename") or "Indexed document"
+    page = doc.metadata.get("page")
+    content = re.sub(r"\s+", " ", doc.page_content or "").strip()
+    page_number = int(page) + 1 if page is not None else None
+
+    return {
+        "id": index,
+        "title": filename,
+        "author": "Uploaded document",
+        "year": None,
+        "source": filename,
+        "page": page_number,
+        "citation": f"[{index}] {filename}" + (f", p. {page_number}" if page_number else ""),
+        "confidence": None if score is None else max(0, min(100, round(100 - float(score) * 10))),
+        "quote": content[:700],
+    }
+
+
+def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_style="numbered", top_k=None):
+    if not DB_PATH.exists():
+        message = "There is no specific document in the folder. Upload a supported document, then ask again."
+        return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    mode_config = get_chat_mode_config(mode)
+    try:
+        requested_top_k = int(top_k or mode_config.retrieval_chunks)
+    except (TypeError, ValueError):
+        requested_top_k = mode_config.retrieval_chunks
+    retrieval_chunks = min(max(requested_top_k, 1), 12)
+    embeddings = _get_embeddings()
+
+    db = FAISS.load_local(
+        str(DB_PATH),
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+
+    if not _has_indexed_docs_for_user(db, user_id):
+        message = "There is no specific document in the folder. Upload a supported document, then ask again."
+        return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    generator_error = _check_answer_generator()
+    if generator_error:
+        return {"answer": generator_error, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    docs_with_scores = db.similarity_search_with_score(
+        query,
+        k=max(retrieval_chunks, _search_limit_for_user(db, user_id)),
+    )
+
+    if user_id is not None:
+        docs_with_scores = [
+            (doc, score)
+            for doc, score in docs_with_scores
+            if doc.metadata.get("user_id") == user_id
+        ]
+
+    if not docs_with_scores:
+        message = "There is no specific document in the folder for this question. Upload the corresponding document, then ask again."
+        return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    selected_docs = [doc for doc, _ in docs_with_scores[:retrieval_chunks]]
+    context = _format_context(
+        selected_docs,
+        mode_config.max_context_chars,
+    )
+    if not context:
+        message = "There is no specific document in the folder for this question. Upload the corresponding document, then ask again."
+        return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    try:
+        answer = _generate_ollama_answer(query, context, mode_config, citation_style)
+    except requests.RequestException:
+        return {"answer": OLLAMA_NOT_RUNNING_MESSAGE, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    sources = [
+        _serialize_source(doc, index, score)
+        for index, (doc, score) in enumerate(docs_with_scores[:retrieval_chunks], start=1)
+    ]
+
+    return {
+        "answer": answer or OLLAMA_NOT_RUNNING_MESSAGE,
+        "sources": sources,
+        "scope": scope,
+        "citation_style": citation_style,
+    }
+
+
+def query_rag(query, user_id=None, mode=None):
+    return query_rag_details(query, user_id=user_id, mode=mode)["answer"]
 
 
 def search_documents(query, user_id=None, limit=8):

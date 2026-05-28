@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.db.models import LibraryItem
 from app.dependencies import get_current_user
-from app.services.rag import process_pdf
+from app.services.rag import SUPPORTED_EXTENSIONS, process_document
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def serialize_library_item(item: LibraryItem):
 
 
 @router.post("/")
-async def upload_pdf(
+async def upload_document(
     file: UploadFile = File(...),
     user=Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -46,8 +46,10 @@ async def upload_pdf(
     if not file.filename:
         raise HTTPException(status_code=400, detail="A filename is required.")
 
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    extension = Path(file.filename).suffix.lower()
+    if extension not in SUPPORTED_EXTENSIONS:
+        supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+        raise HTTPException(status_code=400, detail=f"Supported file types: {supported}.")
 
     safe_name = Path(file.filename).name
     file_path = UPLOAD_DIR / safe_name
@@ -55,11 +57,14 @@ async def upload_pdf(
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    result = process_pdf(file_path, user_id=user.id)
+    try:
+        result = process_document(file_path, user_id=user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     library_item = LibraryItem(
         user_id=user.id,
-        source_type="PDF",
+        source_type=result["file_type"],
         title=result["filename"],
         detail=f"{result['page_count']} pages, {result['chunk_count']} indexed chunks",
         content=result["summary"],
@@ -70,7 +75,7 @@ async def upload_pdf(
     db.refresh(library_item)
 
     return {
-        "message": "PDF processed successfully.",
+        "message": "Document processed successfully.",
         "library_item": serialize_library_item(library_item),
         **result,
     }
