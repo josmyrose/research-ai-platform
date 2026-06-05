@@ -1,7 +1,9 @@
 import os
 import re
+import threading
 import zipfile
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -61,10 +63,54 @@ STOPWORDS = {
 }
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".pptx", ".csv"}
+_FAISS_INDEX = None
+_FAISS_INDEX_MTIME = None
+_FAISS_LOCK = threading.Lock()
 
 
+@lru_cache(maxsize=1)
 def _get_embeddings():
     return HuggingFaceEmbeddings()
+
+
+def _index_mtime():
+    if not DB_PATH.exists():
+        return None
+
+    mtimes = [
+        path.stat().st_mtime
+        for path in DB_PATH.iterdir()
+        if path.is_file()
+    ]
+    return max(mtimes, default=None)
+
+
+def _load_faiss_index():
+    global _FAISS_INDEX, _FAISS_INDEX_MTIME
+
+    if not DB_PATH.exists():
+        return None
+
+    current_mtime = _index_mtime()
+    with _FAISS_LOCK:
+        if _FAISS_INDEX is None or _FAISS_INDEX_MTIME != current_mtime:
+            _FAISS_INDEX = FAISS.load_local(
+                str(DB_PATH),
+                _get_embeddings(),
+                allow_dangerous_deserialization=True,
+            )
+            _FAISS_INDEX_MTIME = current_mtime
+
+        return _FAISS_INDEX
+
+
+def _save_faiss_index(db):
+    global _FAISS_INDEX, _FAISS_INDEX_MTIME
+
+    with _FAISS_LOCK:
+        db.save_local(str(DB_PATH))
+        _FAISS_INDEX = db
+        _FAISS_INDEX_MTIME = _index_mtime()
 
 
 def _load_pdf_documents(file_path):
@@ -184,16 +230,12 @@ def process_document(file_path, user_id=None):
     embeddings = _get_embeddings()
 
     if DB_PATH.exists():
-        db = FAISS.load_local(
-            str(DB_PATH),
-            embeddings,
-            allow_dangerous_deserialization=True,
-        )
+        db = _load_faiss_index()
         db.add_documents(split_docs)
     else:
         db = FAISS.from_documents(split_docs, embeddings)
 
-    db.save_local(str(DB_PATH))
+    _save_faiss_index(db)
 
     return {
         "filename": file_path.name,
@@ -325,13 +367,7 @@ def query_rag(query, user_id=None, mode=None):
         return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
 
     mode_config = get_chat_mode_config(mode)
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
         return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
@@ -400,13 +436,7 @@ def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_s
     except (TypeError, ValueError):
         requested_top_k = mode_config.retrieval_chunks
     retrieval_chunks = min(max(requested_top_k, 1), 12)
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
         message = "There is no specific document in the folder. Upload a supported document, then ask again."
@@ -471,13 +501,7 @@ def search_documents(query, user_id=None, limit=8):
     if not cleaned_query:
         return []
 
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
         return []
