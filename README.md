@@ -1,195 +1,125 @@
-# 🚀 AI Research Copilot  
-### Automated Paper Discovery, Summarization & Semantic Search Platform
-
-![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green)
-![React](https://img.shields.io/badge/React-Frontend-blue)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-blue)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Status](https://img.shields.io/badge/Status-Active-success)
-
----
-
-## 🚀 Overview
-
-AI Research Copilot is an intelligent platform designed to **automate research workflows** by enabling users to upload, search, and interact with research papers using **AI-powered semantic search and conversational analysis**.
-
-It transforms traditional manual research into a **smart, automated, and scalable knowledge system**.
-
----
-
-## 🧠 Business Problem
-
-Modern researchers face **extreme information overload**, with thousands of papers published daily.  
-Existing tools rely on keyword-based search and manual workflows, making it difficult to:
-
-- Discover relevant research  
-- Extract key insights  
-- Stay updated with new publications  
-
-This leads to:
-
-- ⬇️ Reduced productivity  
-- ⬆️ Time-consuming manual analysis  
-- ❌ Missed important research  
-
----
-
-## 💡 Solution
-
-This platform introduces an **AI-powered research assistant** that:
-
-- 📄 Processes research documents  
-- 🔍 Enables semantic search (not keyword-based)  
-- 🤖 Provides contextual answers using RAG (Retrieval-Augmented Generation)  
-- 🧠 Summarizes research papers automatically  
-- 📊 Organizes knowledge into structured workflows  
-
----
-
-## ✨ Key Features
-
-- 🔍 **Semantic Search** using FAISS  
-- 🤖 **AI Chat over Documents (RAG Pipeline)**  
-- 📄 **PDF Upload & Processing**  
-- 🧠 **Automatic Summarization**  
-- 📊 **Topic-Based Research Organization (Planned)**  
-- 🔐 **User Authentication (JWT + PostgreSQL)**  
-- ⚡ **FastAPI Backend with Scalable Architecture**  
-- 🎨 **Modern React Dashboard UI**
-
----
-
-## 🏗️ Architecture
-```bash
-Frontend (React)
-↓
-FastAPI Backend
-↓
-RAG Pipeline (LLM + FAISS)
-↓
-PostgreSQL (Users, Metadata)
-↓
-Document Storage + Embeddings
 ```
 
----
+## Getting Started
 
-## ⚙️ Tech Stack
+### Prerequisites
 
-### 🖥️ Frontend
-- React.js
-- Tailwind CSS
+- Python 3.10+
+- Node.js 18+
+- Ollama installed locally
+- Git
 
-### ⚙️ Backend
-- FastAPI
-- Python
-
-### 🧠 AI / ML
-- FAISS (Vector Search)
-- LLM (Gemini / OpenAI)
-- RAG (Retrieval-Augmented Generation)
-
-### 🗄️ Database
-- PostgreSQL (Production)
-- SQLite (Development)
-
-### 🔐 Authentication
-- JWT (JSON Web Tokens)
-- Bcrypt Password Hashing
-
----
-
-## 📸 Screenshots
-
-### 🔹 Dashboard
-![Dashboard](./assets/dashboard.png)
-
-### 🔹 Research Chat
-![Chat](./assets/chat.png)
-
-### 🔹 Document Upload
-![Upload](./assets/upload.png)
-
----
-
-## 🚀 Getting Started
-
-### 1️⃣ Clone the Repository
+Pull the local model used by the backend:
 
 ```bash
-git clone https://github.com/your-username/research-ai-platform.git
-cd research-ai-platform
+ollama pull llama3.2
 ```
-2️⃣ Backend Setup
+
+Start Ollama before asking chat questions:
+
+```bash
+ollama serve
+```
+
+### Backend Setup
+
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate   # Windows
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
-3️⃣ Setup Environment Variables
-```bash
-Create .env file:
 
-DATABASE_URL=postgresql://postgres:password@localhost:5432/research_ai
-OPENAI_API_KEY=your_api_key
+Create a `.env` file inside `backend/` if needed:
 
+```env
+DATABASE_URL=sqlite:///./research_ai.db
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 ```
-4️⃣ Run Database Migration
+
+Run migrations:
+
 ```bash
 alembic upgrade head
 ```
-5️⃣ Start Backend
+
+Start the API:
+
 ```bash
 uvicorn app.main:app --reload
 ```
-6️⃣ Frontend Setup
+
+Backend runs on:
+
+```text
+http://localhost:8000
+```
+
+### Frontend Setup
+
 ```bash
 cd frontend-react
 npm install
 npm run dev
 ```
-🔄 Future Enhancements
-```bash
-🔁 Automatic paper ingestion (arXiv, PubMed)
-🧠 Method extraction from papers
-🔔 Smart notifications for new research
-📊 Research trend analysis
-🧑‍🤝‍🧑 Multi-user collaboration
-☁️ Cloud deployment (AWS/GCP)
+
+Frontend runs on:
+
+```text
+http://localhost:5173
 ```
-🎯 Use Cases
-```bash
-👨‍🔬 Academic Research
-⚖️ Legal Document Analysis
-🏥 Healthcare Research Insights
-🧪 R&D Teams
-📊 Data-driven decision making
+
+Dashboard route:
+
+```text
+http://localhost:5173/dashboard
 ```
-🎤 Project Highlights
-```bash
-Designed a production-ready AI system
-Implemented RAG-based architecture
-Built scalable FastAPI backend
-Integrated PostgreSQL + Alembic migrations
-Enabled semantic document intelligence
-```
-📜 License
-```bash
-This project is licensed under the MIT License.
-```
-🤝 Contributing
 
-Contributions are welcome! Feel free to open issues and pull requests.
+## Production-Level Business Requirements
 
-⭐ If You Like This Project
+The full business requirement document is included in `doc/`. At a high level, the platform must support:
 
-Give it a ⭐ on GitHub!
+- Secure authentication and protected research workspaces.
+- User-specific document upload, indexing, search, and chat history.
+- Fast Lite Mode for quick research questions.
+- Deep Review Mode for structured research synthesis.
+- Source Mode for evidence-grounded answers.
+- Persistent library and scholar records.
+- Clear handling of unsupported or not-yet-configured web retrieval.
+- Responsive UI states for loading, errors, empty data, and uploads.
+- Backend enforcement of mode behavior and user ownership.
 
-📬 Contact
+## Current Scope and Honest Limitations
 
-Josmy Mathew
-📧 Email: josmyrose@gmail.com
+The application already includes the foundation for a production research assistant. Some areas are intentionally scoped or prepared for future extension:
 
-🔗 LinkedIn: https://www.linkedin.com/in/josmymathew/
+- External academic web retrieval is represented in the UI but requires provider integrations before it becomes fully active.
+- Lite Mode is optimized for concise answers, not exhaustive literature reviews.
+- Source precision depends on uploaded document quality and extracted metadata.
+- Local answer generation requires Ollama to be running with the configured model.
+- Collaboration, project teams, notifications, and cloud deployment are future enhancements.
+
+## Future Improvements
+
+- Integrate academic providers such as Semantic Scholar, PubMed, CrossRef, and arXiv.
+- Add project-level workspaces and team collaboration.
+- Add cloud object storage for uploaded documents.
+- Add admin dashboard and usage analytics.
+- Add automated test coverage for chat modes and RAG behavior.
+- Add Dockerized production deployment.
+- Add streaming responses for chat.
+- Add advanced citation validation and report generation.
+
+## What I Would Highlight In Interviews
+
+- I designed the platform around a real research workflow instead of building only a chatbot.
+- I separated frontend service calls, route protection, backend routes, database models, and RAG services.
+- I implemented user-specific filtering so users only access their own indexed research data.
+- I added multiple chat modes with different retrieval and generation behavior.
+- I included practical production concerns such as caching, migrations, error states, empty states, and extensible API boundaries.
+- I documented business requirements to show product ownership, not only implementation ability.
+
+## License
+
+This project is available under the MIT License.
