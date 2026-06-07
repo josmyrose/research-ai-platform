@@ -30,7 +30,7 @@ import {
 import { LoadingSkeleton } from "../../../ui";
 
 const CHARACTER_LIMIT = 6000;
-const CHAT_CACHE_PREFIX = "research-chat-cache:";
+const CHAT_CACHE_PREFIX = "research-chat-cache:v2:";
 const CHAT_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const chatModes = [
@@ -258,7 +258,7 @@ export default function ChatBox({ resetSignal = 0 }) {
   const textareaRef = useRef(null);
 
   const latestSources = useMemo(
-    () => [...chat].reverse().find((entry) => entry.type === "ai" && entry.sources?.length)?.sources ?? [],
+    () => [...chat].reverse().find((entry) => entry.type === "ai")?.sources ?? [],
     [chat],
   );
   const activeModeConfig = chatModes.find((mode) => mode.key === activeMode) ?? chatModes[0];
