@@ -1,7 +1,9 @@
 import os
 import re
+import threading
 import zipfile
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -32,6 +34,22 @@ ANSWER_GENERATOR_UNAVAILABLE_MESSAGES = {
 LEGACY_ANSWER_GENERATOR_UNAVAILABLE_PREFIX = (
     "I found relevant document context, but the answer generator is not available right now."
 )
+MISSING_DOCUMENT_MESSAGE = (
+    "The corresponding document is not uploaded in the system. "
+    "Upload the document, then ask again."
+)
+INSUFFICIENT_CONTEXT_PATTERNS = (
+    "does not mention",
+    "do not mention",
+    "doesn't mention",
+    "provided document context",
+    "not able to answer",
+    "unable to answer",
+    "not mentioned in the referred document",
+    "uploaded documents do not provide enough information",
+    "do not provide enough information",
+    "does not contain enough information",
+)
 
 STOPWORDS = {
     "a",
@@ -61,10 +79,54 @@ STOPWORDS = {
 }
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".pptx", ".csv"}
+_FAISS_INDEX = None
+_FAISS_INDEX_MTIME = None
+_FAISS_LOCK = threading.Lock()
 
 
+@lru_cache(maxsize=1)
 def _get_embeddings():
     return HuggingFaceEmbeddings()
+
+
+def _index_mtime():
+    if not DB_PATH.exists():
+        return None
+
+    mtimes = [
+        path.stat().st_mtime
+        for path in DB_PATH.iterdir()
+        if path.is_file()
+    ]
+    return max(mtimes, default=None)
+
+
+def _load_faiss_index():
+    global _FAISS_INDEX, _FAISS_INDEX_MTIME
+
+    if not DB_PATH.exists():
+        return None
+
+    current_mtime = _index_mtime()
+    with _FAISS_LOCK:
+        if _FAISS_INDEX is None or _FAISS_INDEX_MTIME != current_mtime:
+            _FAISS_INDEX = FAISS.load_local(
+                str(DB_PATH),
+                _get_embeddings(),
+                allow_dangerous_deserialization=True,
+            )
+            _FAISS_INDEX_MTIME = current_mtime
+
+        return _FAISS_INDEX
+
+
+def _save_faiss_index(db):
+    global _FAISS_INDEX, _FAISS_INDEX_MTIME
+
+    with _FAISS_LOCK:
+        db.save_local(str(DB_PATH))
+        _FAISS_INDEX = db
+        _FAISS_INDEX_MTIME = _index_mtime()
 
 
 def _load_pdf_documents(file_path):
@@ -184,16 +246,12 @@ def process_document(file_path, user_id=None):
     embeddings = _get_embeddings()
 
     if DB_PATH.exists():
-        db = FAISS.load_local(
-            str(DB_PATH),
-            embeddings,
-            allow_dangerous_deserialization=True,
-        )
+        db = _load_faiss_index()
         db.add_documents(split_docs)
     else:
         db = FAISS.from_documents(split_docs, embeddings)
 
-    db.save_local(str(DB_PATH))
+    _save_faiss_index(db)
 
     return {
         "filename": file_path.name,
@@ -262,10 +320,16 @@ def _citation_instruction(citation_style):
     return "Use numbered citations such as [1], [2] for supported claims."
 
 
+def _is_insufficient_context_answer(answer):
+    normalized_answer = re.sub(r"\s+", " ", answer or "").strip().lower()
+    return any(pattern in normalized_answer for pattern in INSUFFICIENT_CONTEXT_PATTERNS)
+
+
 def _generate_ollama_answer(query, context, mode_config, citation_style="numbered"):
     prompt = f"""
 You are a research assistant. Answer the user's question using only the provided document context.
-If the context does not contain enough information, say that the uploaded documents do not provide enough information.
+If the context does not contain enough information, answer exactly: {MISSING_DOCUMENT_MESSAGE}
+Do not say that a term is not mentioned in the referred document.
 Mode: {mode_config.label}
 Mode instructions: {mode_config.instruction}
 Citation instructions: {_citation_instruction(citation_style)}
@@ -322,19 +386,13 @@ def is_answer_generator_unavailable(response):
 
 def query_rag(query, user_id=None, mode=None):
     if not DB_PATH.exists():
-        return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
+        return MISSING_DOCUMENT_MESSAGE
 
     mode_config = get_chat_mode_config(mode)
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
-        return "There is no specific document in the folder. Upload the corresponding PDF, then ask again."
+        return MISSING_DOCUMENT_MESSAGE
 
     generator_error = _check_answer_generator()
     if generator_error:
@@ -353,19 +411,22 @@ def query_rag(query, user_id=None, mode=None):
         ]
 
     if not docs:
-        return "There is no specific document in the folder for this question. Upload the corresponding PDF, then ask again."
+        return MISSING_DOCUMENT_MESSAGE
 
     context = _format_context(
         docs[: mode_config.retrieval_chunks],
         mode_config.max_context_chars,
     )
     if not context:
-        return "There is no specific document in the folder for this question. Upload the corresponding PDF, then ask again."
+        return MISSING_DOCUMENT_MESSAGE
 
     try:
         answer = _generate_ollama_answer(query, context, mode_config)
     except requests.RequestException:
         return OLLAMA_NOT_RUNNING_MESSAGE
+
+    if _is_insufficient_context_answer(answer):
+        return MISSING_DOCUMENT_MESSAGE
 
     return answer or OLLAMA_NOT_RUNNING_MESSAGE
 
@@ -391,7 +452,7 @@ def _serialize_source(doc, index, score=None):
 
 def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_style="numbered", top_k=None):
     if not DB_PATH.exists():
-        message = "There is no specific document in the folder. Upload a supported document, then ask again."
+        message = MISSING_DOCUMENT_MESSAGE
         return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
 
     mode_config = get_chat_mode_config(mode)
@@ -400,16 +461,10 @@ def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_s
     except (TypeError, ValueError):
         requested_top_k = mode_config.retrieval_chunks
     retrieval_chunks = min(max(requested_top_k, 1), 12)
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
-        message = "There is no specific document in the folder. Upload a supported document, then ask again."
+        message = MISSING_DOCUMENT_MESSAGE
         return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
 
     generator_error = _check_answer_generator()
@@ -429,7 +484,7 @@ def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_s
         ]
 
     if not docs_with_scores:
-        message = "There is no specific document in the folder for this question. Upload the corresponding document, then ask again."
+        message = MISSING_DOCUMENT_MESSAGE
         return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
 
     selected_docs = [doc for doc, _ in docs_with_scores[:retrieval_chunks]]
@@ -438,13 +493,16 @@ def query_rag_details(query, user_id=None, mode=None, scope="hybrid", citation_s
         mode_config.max_context_chars,
     )
     if not context:
-        message = "There is no specific document in the folder for this question. Upload the corresponding document, then ask again."
+        message = MISSING_DOCUMENT_MESSAGE
         return {"answer": message, "sources": [], "scope": scope, "citation_style": citation_style}
 
     try:
         answer = _generate_ollama_answer(query, context, mode_config, citation_style)
     except requests.RequestException:
         return {"answer": OLLAMA_NOT_RUNNING_MESSAGE, "sources": [], "scope": scope, "citation_style": citation_style}
+
+    if _is_insufficient_context_answer(answer):
+        return {"answer": MISSING_DOCUMENT_MESSAGE, "sources": [], "scope": scope, "citation_style": citation_style}
 
     sources = [
         _serialize_source(doc, index, score)
@@ -471,13 +529,7 @@ def search_documents(query, user_id=None, limit=8):
     if not cleaned_query:
         return []
 
-    embeddings = _get_embeddings()
-
-    db = FAISS.load_local(
-        str(DB_PATH),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    db = _load_faiss_index()
 
     if not _has_indexed_docs_for_user(db, user_id):
         return []

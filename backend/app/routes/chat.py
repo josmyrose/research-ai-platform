@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.services.chat_modes import DEFAULT_CHAT_MODE, normalize_chat_mode
+from app.services.cache import build_cache_key, get_json_cache, set_json_cache
 from app.services.rag import is_answer_generator_unavailable, query_rag_details
 from app.db.database import SessionLocal
 from app.db.models import Chat
@@ -35,6 +36,30 @@ def serialize_chat(chat: Chat):
     }
 
 
+def cache_enabled(cache_value):
+    return (cache_value or "off").strip().lower() in {"on", "smart", "multi_level"}
+
+
+def build_chat_cache_payload(message, user_id, mode, scope, citation_style, top_k):
+    return {
+        "message": message,
+        "user_id": user_id,
+        "mode": mode,
+        "scope": scope,
+        "citation_style": citation_style,
+        "top_k": top_k,
+    }
+
+
+def find_database_cache(db, message, user_id, mode):
+    return (
+        db.query(Chat)
+        .filter(Chat.user_id == user_id, Chat.mode == mode, Chat.message == message)
+        .order_by(Chat.id.desc())
+        .first()
+    )
+
+
 # DB dependency
 def get_db():
     db = SessionLocal()
@@ -57,6 +82,36 @@ def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_us
     scope = (query.get("scope") or "hybrid").strip().lower()
     citation_style = (query.get("citation_style") or "numbered").strip().lower()
     top_k = query.get("top_k")
+    use_cache = cache_enabled(query.get("cache"))
+    cache_key = build_cache_key(
+        "chat",
+        build_chat_cache_payload(message, user.id, mode, scope, citation_style, top_k),
+    )
+
+    if use_cache:
+        cached_result = get_json_cache(cache_key)
+        if cached_result:
+            return {
+                **cached_result,
+                "chat": None,
+                "saved": False,
+                "cache_hit": True,
+                "cache_layer": "redis",
+            }
+
+        cached_chat = find_database_cache(db, message, user.id, mode)
+        if cached_chat and should_include_in_history(cached_chat):
+            return {
+                "response": sanitize_response_text(cached_chat.response),
+                "sources": [],
+                "scope": scope,
+                "citation_style": citation_style,
+                "chat": serialize_chat(cached_chat),
+                "saved": False,
+                "cache_hit": True,
+                "cache_layer": "database",
+            }
+
     result = query_rag_details(
         message,
         user_id=user.id,
@@ -89,13 +144,28 @@ def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_us
     db.commit()
     db.refresh(new_chat)
 
-    return {
+    response_payload = {
         "response": response,
         "sources": result.get("sources", []),
         "scope": result.get("scope"),
         "citation_style": result.get("citation_style"),
         "chat": serialize_chat(new_chat),
+        "saved": True,
+        "cache_hit": False,
+        "cache_layer": "generated",
     }
+    if use_cache:
+        set_json_cache(
+            cache_key,
+            {
+                "response": response_payload["response"],
+                "sources": response_payload["sources"],
+                "scope": response_payload["scope"],
+                "citation_style": response_payload["citation_style"],
+            },
+        )
+
+    return response_payload
 
 
 @router.get("/history")
