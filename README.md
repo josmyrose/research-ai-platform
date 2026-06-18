@@ -32,9 +32,9 @@ Unlike traditional chatbots, responses are grounded in user-provided documents, 
 ## 📸 Application Preview
 
 <p align="center">
-  <img src="docs/images/dashboard.png" width="30%">
-  <img src="docs/images/chat.png" width="30%">
-  <img src="docs/images/search.png" width="30%">
+  <img src="doc/images/dashboard.png" width="30%">
+  <img src="doc/images/chat.png" width="30%">
+  <img src="doc/images/search.png" width="30%">
 </p>
 ---
 
