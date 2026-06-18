@@ -3,6 +3,9 @@ import { apiClient, getAuthConfig } from "../api/client";
 export const sendChatMessage = (message, options = {}) =>
   apiClient.post("/chat/", { message, ...options }, getAuthConfig());
 
+export const rewriteText = (text, tone = "clear academic tone") =>
+  apiClient.post("/chat/rewrite", { text, tone }, getAuthConfig());
+
 export const getChatHistory = (search = "") =>
   apiClient.get("/chat/history", {
     ...getAuthConfig(),
