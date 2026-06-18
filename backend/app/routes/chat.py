@@ -3,7 +3,13 @@ from sqlalchemy.orm import Session
 
 from app.services.chat_modes import DEFAULT_CHAT_MODE, normalize_chat_mode
 from app.services.cache import build_cache_key, get_json_cache, set_json_cache
-from app.services.rag import is_answer_generator_unavailable, query_rag_details
+from app.services.rag import (
+    OLLAMA_NOT_RUNNING_MESSAGE,
+    generate_rewrite,
+    get_document_index_version,
+    is_answer_generator_unavailable,
+    query_rag_details,
+)
 from app.db.database import SessionLocal
 from app.db.models import Chat
 from app.dependencies import get_current_user
@@ -40,7 +46,7 @@ def cache_enabled(cache_value):
     return (cache_value or "off").strip().lower() in {"on", "smart", "multi_level"}
 
 
-def build_chat_cache_payload(message, user_id, mode, scope, citation_style, top_k):
+def build_chat_cache_payload(message, user_id, mode, scope, citation_style, top_k, index_version):
     return {
         "message": message,
         "user_id": user_id,
@@ -48,6 +54,7 @@ def build_chat_cache_payload(message, user_id, mode, scope, citation_style, top_
         "scope": scope,
         "citation_style": citation_style,
         "top_k": top_k,
+        "index_version": index_version,
     }
 
 
@@ -58,6 +65,51 @@ def find_database_cache(db, message, user_id, mode):
         .order_by(Chat.id.desc())
         .first()
     )
+
+
+@router.post("/rewrite")
+def rewrite(query: dict, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Login is required before using rewrite.")
+
+    text = (query.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required.")
+
+    tone = (query.get("tone") or "clear academic tone").strip()
+    cache_key = build_cache_key(
+        "rewrite",
+        {
+            "text": text,
+            "tone": tone,
+            "user_id": user.id,
+        },
+    )
+
+    cached_result = get_json_cache(cache_key)
+    if cached_result:
+        return {
+            **cached_result,
+            "cache_hit": True,
+            "cache_layer": "backend",
+        }
+
+    try:
+        rewritten = generate_rewrite(text, tone=tone)
+    except Exception:
+        return {
+            "response": OLLAMA_NOT_RUNNING_MESSAGE,
+            "cache_hit": False,
+            "cache_layer": "error",
+        }
+
+    payload = {
+        "response": rewritten or OLLAMA_NOT_RUNNING_MESSAGE,
+        "cache_hit": False,
+        "cache_layer": "generated",
+    }
+    set_json_cache(cache_key, {"response": payload["response"]})
+    return payload
 
 
 # DB dependency
@@ -83,9 +135,10 @@ def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_us
     citation_style = (query.get("citation_style") or "numbered").strip().lower()
     top_k = query.get("top_k")
     use_cache = cache_enabled(query.get("cache"))
+    index_version = get_document_index_version()
     cache_key = build_cache_key(
         "chat",
-        build_chat_cache_payload(message, user.id, mode, scope, citation_style, top_k),
+        build_chat_cache_payload(message, user.id, mode, scope, citation_style, top_k, index_version),
     )
 
     if use_cache:
@@ -96,7 +149,7 @@ def chat(query: dict, db: Session = Depends(get_db), user=Depends(get_current_us
                 "chat": None,
                 "saved": False,
                 "cache_hit": True,
-                "cache_layer": "redis",
+                "cache_layer": "backend",
             }
 
         cached_chat = find_database_cache(db, message, user.id, mode)

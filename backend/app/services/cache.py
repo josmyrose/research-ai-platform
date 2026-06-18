@@ -1,13 +1,18 @@
 import hashlib
 import json
 import os
+import time
 from datetime import timedelta
+from threading import Lock
 
 
 DEFAULT_CACHE_TTL_SECONDS = int(os.getenv("CHAT_CACHE_TTL_SECONDS", "1800"))
+MEMORY_CACHE_MAX_ITEMS = int(os.getenv("MEMORY_CACHE_MAX_ITEMS", "512"))
 REDIS_URL = os.getenv("REDIS_URL")
 _REDIS_CLIENT = None
 _REDIS_AVAILABLE = None
+_MEMORY_CACHE = {}
+_MEMORY_CACHE_LOCK = Lock()
 
 
 def build_cache_key(namespace, payload):
@@ -42,10 +47,36 @@ def get_redis_client():
     return _REDIS_CLIENT
 
 
+def _get_memory_cache(key):
+    now = time.time()
+    with _MEMORY_CACHE_LOCK:
+        cached = _MEMORY_CACHE.get(key)
+        if not cached:
+            return None
+
+        expires_at, value = cached
+        if expires_at <= now:
+            _MEMORY_CACHE.pop(key, None)
+            return None
+
+        return value
+
+
+def _set_memory_cache(key, value, ttl_seconds):
+    now = time.time()
+    expires_at = now + ttl_seconds
+    with _MEMORY_CACHE_LOCK:
+        if len(_MEMORY_CACHE) >= MEMORY_CACHE_MAX_ITEMS:
+            oldest_key = min(_MEMORY_CACHE, key=lambda cache_key: _MEMORY_CACHE[cache_key][0])
+            _MEMORY_CACHE.pop(oldest_key, None)
+
+        _MEMORY_CACHE[key] = (expires_at, value)
+
+
 def get_json_cache(key):
     client = get_redis_client()
     if client is None:
-        return None
+        return _get_memory_cache(key)
 
     try:
         value = client.get(key)
@@ -64,7 +95,8 @@ def get_json_cache(key):
 def set_json_cache(key, value, ttl_seconds=DEFAULT_CACHE_TTL_SECONDS):
     client = get_redis_client()
     if client is None:
-        return False
+        _set_memory_cache(key, value, ttl_seconds)
+        return True
 
     try:
         client.setex(key, timedelta(seconds=ttl_seconds), json.dumps(value))
