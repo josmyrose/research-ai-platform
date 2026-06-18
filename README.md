@@ -27,6 +27,16 @@ The platform combines document intelligence, conversational AI, semantic retriev
 Unlike traditional chatbots, responses are grounded in user-provided documents, ensuring greater relevance, transparency, and explainability.
 
 ---
+---
+
+## 📸 Application Preview
+
+<p align="center">
+  <img src="docs/images/dashboard.png" width="30%">
+  <img src="docs/images/chat.png" width="30%">
+  <img src="docs/images/search.png" width="30%">
+</p>
+---
 
 ## 🎯 Key Features
 
