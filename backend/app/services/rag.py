@@ -101,6 +101,10 @@ def _index_mtime():
     return max(mtimes, default=None)
 
 
+def get_document_index_version():
+    return _index_mtime()
+
+
 def _load_faiss_index():
     global _FAISS_INDEX, _FAISS_INDEX_MTIME
 
@@ -352,6 +356,34 @@ Document context:
             },
         },
         timeout=(5, 120),
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    return (data.get("response") or "").strip()
+
+
+def generate_rewrite(text, tone="clear academic tone"):
+    prompt = f"""
+Rewrite the following text in a {tone}.
+Keep the original meaning, improve clarity and flow, and do not add citations or unsupported facts.
+
+Text:
+{text}
+""".strip()
+
+    response = requests.post(
+        f"{OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+        json={
+            "model": OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 700,
+            },
+        },
+        timeout=(5, 60),
     )
     response.raise_for_status()
 

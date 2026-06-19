@@ -24,6 +24,7 @@ import {
 } from "react-icons/fa6";
 
 import {
+  rewriteText,
   sendChatMessage,
   uploadResearchFile,
 } from "../../../services/researchService";
@@ -31,6 +32,7 @@ import { LoadingSkeleton } from "../../../ui";
 
 const CHARACTER_LIMIT = 6000;
 const CHAT_CACHE_PREFIX = "research-chat-cache:v2:";
+const REWRITE_CACHE_PREFIX = "research-rewrite-cache:v1:";
 const CHAT_CACHE_TTL_MS = 30 * 60 * 1000;
 
 const chatModes = [
@@ -161,6 +163,9 @@ const clearBrowserChatCache = () => {
     .filter((key) => key.startsWith(CHAT_CACHE_PREFIX))
     .forEach((key) => localStorage.removeItem(key));
 };
+
+const buildRewriteCacheKey = (text) =>
+  `${REWRITE_CACHE_PREFIX}${JSON.stringify({ text, tone: "clear academic tone" })}`;
 
 function SegmentedControl({ items, value, onChange }) {
   return (
@@ -428,7 +433,81 @@ export default function ChatBox({ resetSignal = 0 }) {
     await navigator.clipboard?.writeText(text);
   };
 
+  const runRewrite = async () => {
+    const text = msg.trim();
+    if (loading || uploading || !text || text.length > CHARACTER_LIMIT) {
+      return;
+    }
+
+    const userEntry = {
+      id: `user-rewrite-${Date.now()}`,
+      type: "user",
+      text: `Rewrite:\n\n${text}`,
+      mode: activeMode,
+    };
+
+    setChat((prev) => [...prev, userEntry]);
+    setMsg("");
+
+    const rewriteCacheKey = buildRewriteCacheKey(text);
+    if (cacheMode === "multi_level") {
+      const browserCached = getBrowserCache(rewriteCacheKey);
+      if (browserCached) {
+        setChat((prev) => [
+          ...prev,
+          {
+            id: `ai-rewrite-browser-cache-${Date.now()}`,
+            type: "ai",
+            text: browserCached.response,
+            mode: activeMode,
+            sources: [],
+            cacheLayer: "browser",
+          },
+        ]);
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await rewriteText(text);
+      const aiPayload = { response: res.data.response };
+      if (cacheMode === "multi_level") {
+        setBrowserCache(rewriteCacheKey, aiPayload);
+      }
+      setChat((prev) => [
+        ...prev,
+        {
+          id: `ai-rewrite-${Date.now()}`,
+          type: "ai",
+          text: aiPayload.response,
+          mode: activeMode,
+          sources: [],
+          cacheLayer: res.data.cache_layer,
+        },
+      ]);
+    } catch (error) {
+      setChat((prev) => [
+        ...prev,
+        {
+          id: `ai-rewrite-error-${Date.now()}`,
+          type: "ai",
+          text: error.response?.data?.detail || "Rewrite is not available right now. Please try again.",
+          mode: activeMode,
+          sources: [],
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const applyTool = (tool) => {
+    if (tool.label === "Rewrite" && msg.trim()) {
+      runRewrite();
+      return;
+    }
+
     setMsg(`${tool.prompt}${msg}`);
     textareaRef.current?.focus();
   };
@@ -569,7 +648,8 @@ export default function ChatBox({ resetSignal = 0 }) {
                   key={tool.label}
                   type="button"
                   onClick={() => applyTool(tool)}
-                  className="flex min-h-10 items-center gap-2 rounded-2xl border border-white/80 bg-white/84 px-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[#c9d3fb] hover:text-[#4562e1]"
+                  disabled={loading || uploading}
+                  className="flex min-h-10 items-center gap-2 rounded-2xl border border-white/80 bg-white/84 px-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-[#c9d3fb] hover:text-[#4562e1] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Icon className="text-[#4968eb]" />
                   {tool.label}

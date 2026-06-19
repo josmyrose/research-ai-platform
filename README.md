@@ -1,125 +1,471 @@
+# 🚀 Research AI Platform
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python" />
+  <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi" />
+  <img src="https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react" />
+  <img src="https://img.shields.io/badge/Ollama-Local%20LLM-orange?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/RAG-AI%20Powered-red?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/SQLite-Database-lightgrey?style=for-the-badge&logo=sqlite" />
+</p>
+
+<p align="center">
+  <strong>
+    AI-Powered Research Workspace for Intelligent Document Analysis, Semantic Search,
+    and Retrieval-Augmented Generation (RAG)
+  </strong>
+</p>
+
+---
+
+## 📚 Overview
+
+Research AI Platform is a full-stack AI-powered research assistant that enables users to upload documents, build a personal knowledge base, perform semantic search, and interact with their documents using Retrieval-Augmented Generation (RAG).
+
+The platform combines document intelligence, conversational AI, semantic retrieval, and local Large Language Models (LLMs) into a unified research environment.
+
+Unlike traditional chatbots, responses are grounded in user-provided documents, ensuring greater relevance, transparency, and explainability.
+
+---
+---
+
+## 📸 Application Preview
+
+<p align="center">
+  <img src="doc/images/dashboard.png" width="30%">
+  <img src="doc/images/chat.png" width="30%">
+  <img src="doc/images/search.png" width="30%">
+</p>
+---
+
+## 🎯 Key Features
+
+### 🤖 AI-Powered Research Assistant
+
+- Retrieval-Augmented Generation (RAG)
+- Context-aware question answering
+- Source-grounded responses
+- Multi-document reasoning
+- Follow-up conversation support
+
+### 📄 Document Intelligence
+
+- Upload research documents
+- Automatic document processing
+- Text extraction and indexing
+- Research library management
+- Metadata organization
+
+### 🔍 Semantic Search
+
+- Intelligent document retrieval
+- Contextual search capabilities
+- Relevance-based ranking
+- Source attribution
+- Fast query execution
+
+### 💬 Conversational Research
+
+- Interactive AI chat interface
+- Multi-turn conversations
+- Research-focused workflows
+- Citation-based answers
+- Document-aware responses
+
+### ⚡ Performance Optimization
+
+- Intelligent caching layer
+- Optimized retrieval pipeline
+- Faster response generation
+- Reduced LLM inference overhead
+
+### 🔐 Secure Workspace
+
+- User authentication
+- Protected research libraries
+- User-specific document ownership
+- Secure API endpoints
+
+---
+
+## 🏗️ System Architecture
+
+```text
+┌─────────────────────────────┐
+│       React Frontend        │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│        FastAPI API          │
+└──────────────┬──────────────┘
+               │
+     ┌─────────┼─────────┐
+     │         │         │
+     ▼         ▼         ▼
+ SQLite     Cache      RAG
+Database    Layer     Engine
+     │                   │
+     ▼                   ▼
+Document          Ollama LLM
+Storage           Inference
 ```
 
-## Getting Started
+---
+
+## 🚀 Core Research Workflow
+
+```text
+Upload Documents
+       │
+       ▼
+Document Processing
+       │
+       ▼
+Indexing & Storage
+       │
+       ▼
+Semantic Retrieval
+       │
+       ▼
+Context Selection
+       │
+       ▼
+LLM Generation
+       │
+       ▼
+Grounded Response
+```
+
+---
+
+## 🛠️ Technology Stack
+
+### Frontend
+
+- React
+- Vite
+- JavaScript
+- CSS
+- Axios
+
+### Backend
+
+- FastAPI
+- Python
+- SQLAlchemy
+- SQLite
+- Pydantic
+
+### Artificial Intelligence
+
+- Retrieval-Augmented Generation (RAG)
+- Ollama
+- Large Language Models (LLMs)
+- Semantic Retrieval
+- Prompt Engineering
+
+### Infrastructure
+
+- Git
+- GitHub
+- REST APIs
+
+---
+
+## 📦 Project Structure
+
+```text
+research-ai-platform/
+│
+├── backend/
+│   ├── app/
+│   │   ├── routes/
+│   │   ├── services/
+│   │   ├── models/
+│   │   ├── database/
+│   │   └── core/
+│   │
+│   ├── uploads/
+│   └── requirements.txt
+│
+├── frontend-react/
+│   ├── src/
+│   │   ├── features/
+│   │   ├── components/
+│   │   ├── services/
+│   │   └── pages/
+│   │
+│   └── package.json
+│
+├── docs/
+│
+└── README.md
+```
+
+---
+
+## 🔥 Research Modes
+
+### ⚡ Lite Mode
+
+Quick answers for everyday research questions.
+
+### 📚 Deep Review Mode
+
+Comprehensive analysis and synthesis of retrieved information.
+
+### 📖 Source Mode
+
+Evidence-grounded responses with source references.
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
+Before running the application, ensure you have:
+
 - Python 3.10+
 - Node.js 18+
-- Ollama installed locally
 - Git
+- Ollama installed locally
 
-Pull the local model used by the backend:
+---
+
+### Install Local LLM
+
+Pull the model used by the backend:
 
 ```bash
 ollama pull llama3.2
 ```
 
-Start Ollama before asking chat questions:
+---
+
+### Start Ollama
 
 ```bash
 ollama serve
 ```
 
-### Backend Setup
+---
+
+## Backend Setup
+
+Navigate to backend directory:
 
 ```bash
 cd backend
+```
+
+Create virtual environment:
+
+```bash
 python -m venv venv
+```
+
+Activate environment:
+
+### Windows
+
+```bash
 venv\Scripts\activate
+```
+
+### Linux / Mac
+
+```bash
+source venv/bin/activate
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-Create a `.env` file inside `backend/` if needed:
-
-```env
-DATABASE_URL=sqlite:///./research_ai.db
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2
-```
-
-Run migrations:
-
-```bash
-alembic upgrade head
-```
-
-Start the API:
+Run backend:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-Backend runs on:
+Backend URL:
 
 ```text
 http://localhost:8000
 ```
 
-### Frontend Setup
+---
+
+## Frontend Setup
+
+Navigate to frontend:
 
 ```bash
 cd frontend-react
+```
+
+Install dependencies:
+
+```bash
 npm install
+```
+
+Run frontend:
+
+```bash
 npm run dev
 ```
 
-Frontend runs on:
+Frontend URL:
 
 ```text
 http://localhost:5173
 ```
 
-Dashboard route:
+---
 
-```text
-http://localhost:5173/dashboard
-```
+## 🔑 Major Components
 
-## Production-Level Business Requirements
+### Research Library
 
-The full business requirement document is included in `doc/`. At a high level, the platform must support:
+- Document management
+- File organization
+- Knowledge base creation
 
-- Secure authentication and protected research workspaces.
-- User-specific document upload, indexing, search, and chat history.
-- Fast Lite Mode for quick research questions.
-- Deep Review Mode for structured research synthesis.
-- Source Mode for evidence-grounded answers.
-- Persistent library and scholar records.
-- Clear handling of unsupported or not-yet-configured web retrieval.
-- Responsive UI states for loading, errors, empty data, and uploads.
-- Backend enforcement of mode behavior and user ownership.
+### Search Engine
 
-## Current Scope and Honest Limitations
+- Semantic search
+- Context retrieval
+- Source ranking
 
-The application already includes the foundation for a production research assistant. Some areas are intentionally scoped or prepared for future extension:
+### RAG Pipeline
 
-- External academic web retrieval is represented in the UI but requires provider integrations before it becomes fully active.
-- Lite Mode is optimized for concise answers, not exhaustive literature reviews.
-- Source precision depends on uploaded document quality and extracted metadata.
-- Local answer generation requires Ollama to be running with the configured model.
-- Collaboration, project teams, notifications, and cloud deployment are future enhancements.
+- Query understanding
+- Context retrieval
+- Prompt construction
+- LLM response generation
 
-## Future Improvements
+### Chat Interface
 
-- Integrate academic providers such as Semantic Scholar, PubMed, CrossRef, and arXiv.
-- Add project-level workspaces and team collaboration.
-- Add cloud object storage for uploaded documents.
-- Add admin dashboard and usage analytics.
-- Add automated test coverage for chat modes and RAG behavior.
-- Add Dockerized production deployment.
-- Add streaming responses for chat.
-- Add advanced citation validation and report generation.
+- Interactive research assistant
+- Context retention
+- Multi-turn conversations
 
-## What I Would Highlight In Interviews
+### Authentication System
 
-- I designed the platform around a real research workflow instead of building only a chatbot.
-- I separated frontend service calls, route protection, backend routes, database models, and RAG services.
-- I implemented user-specific filtering so users only access their own indexed research data.
-- I added multiple chat modes with different retrieval and generation behavior.
-- I included practical production concerns such as caching, migrations, error states, empty states, and extensible API boundaries.
-- I documented business requirements to show product ownership, not only implementation ability.
+- User login
+- Secure access control
+- Protected resources
 
-## License
+---
 
-This project is available under the MIT License.
+## 💡 Technical Highlights
+
+### AI Engineering
+
+- Retrieval-Augmented Generation (RAG)
+- Context-aware prompting
+- Grounded AI responses
+- Semantic document retrieval
+
+### Backend Engineering
+
+- Modular FastAPI architecture
+- RESTful API design
+- Service-layer abstraction
+- Secure endpoint management
+
+### Frontend Engineering
+
+- Component-based React architecture
+- Responsive user interface
+- API-driven communication
+- State management
+
+### Performance Engineering
+
+- Intelligent caching
+- Reduced retrieval latency
+- Optimized search pipeline
+- Faster response generation
+
+---
+
+## 🎓 Skills Demonstrated
+
+This project showcases expertise in:
+
+- Artificial Intelligence
+- Large Language Models (LLMs)
+- Retrieval-Augmented Generation (RAG)
+- Semantic Search Systems
+- FastAPI Development
+- React Development
+- Full-Stack Engineering
+- REST API Design
+- Database Design
+- Software Architecture
+- Performance Optimization
+- Prompt Engineering
+
+---
+
+## 🔮 Future Enhancements
+
+- Vector Database Integration
+- Research Report Generation
+- PDF Summarization
+- Knowledge Graph Visualization
+- Multi-Agent Research Workflows
+- Citation Exporting
+- Research Collaboration Features
+- Cloud Deployment
+- Docker Support
+- Kubernetes Deployment
+
+---
+
+## 📈 Why This Project Matters
+
+Researchers and professionals spend significant time searching through documents, papers, and reports.
+
+Research AI Platform transforms that workflow by enabling:
+
+- Faster information discovery
+- Context-aware research assistance
+- Semantic document understanding
+- Evidence-based AI responses
+
+The result is a more efficient, explainable, and intelligent research experience.
+
+---
+
+## 👨‍💻 Author
+
+### Josmy Mathew
+
+AI Engineer | Data Scientist | Machine Learning Enthusiast
+
+- MSc Data Science, AI & Digital Business (Germany)
+- 12+ Years Teaching Experience
+- Full-Stack AI Application Development
+- Retrieval-Augmented Generation (RAG)
+- Machine Learning & NLP
+
+---
+
+## ⭐ Support
+
+If you find this project useful, consider giving it a star.
+
+It helps others discover the project and supports future development.
+
+---
+
+<p align="center">
+  Built with ❤️ using FastAPI, React, Ollama, and Retrieval-Augmented Generation (RAG)
+</p>
